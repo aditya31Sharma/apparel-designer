@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Warp</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>Warp</h1>
+  <span class="tag">vector deformation</span>
+  <div class="grow"></div>
+  <span class="tag" id="srcName">nothing loaded</span>
+</header>
+
+<main>
+  <div id="stage">
+    <svg id="board" xmlns="http://www.w3.org/2000/svg">
+      <g id="grid"></g>
+      <g id="world">
+        <g id="art"></g>
+        <polygon id="quad"></polygon>
+      </g>
+      <g id="guides"></g>
+      <g id="handles"></g>
+    </svg>
+    <div id="hud"></div>
+    <div id="drop">Drop an SVG file</div>
+  </div>
+
+  <aside>
+    <div class="scroll">
+      <div class="sec">
+        <h2>Source</h2>
+        <div class="two" style="margin-bottom:7px">
+          <button class="b" id="open">Open SVG…</button>
+          <button class="b" id="pasteBtn">Paste</button>
+        </div>
+        <div class="samples" id="samples"></div>
+        <input type="file" id="file" accept=".svg,image/svg+xml" hidden>
+        <div class="err" id="err"></div>
+        <div class="hint">Paste SVG markup with <kbd>⌘V</kbd> anywhere, or drop a file
+          on the canvas.</div>
+      </div>
+
+      <div class="sec">
+        <h2>Preset</h2>
+        <div class="grid" id="presets"></div>
+      </div>
+
+      <div class="sec">
+        <h2>Shape</h2>
+        <div class="row">
+          <label for="strength">Strength</label>
+          <input type="range" id="strength" min="-100" max="100" value="45">
+          <span class="val" id="strengthVal">45</span>
+        </div>
+        <label class="chk"><input type="checkbox" id="smooth" checked> Smooth curves</label>
+        <label class="chk"><input type="checkbox" id="srcColours">
+          Use source colours <small>&nbsp;from the SVG</small></label>
+        <div class="row">
+          <label for="fill">Fill</label>
+          <input type="color" id="fill" value="#ffffff">
+          <label class="chk" style="margin:0 0 0 6px"><input type="checkbox" id="fillOn" checked>
+            <small>on</small></label>
+        </div>
+        <div class="row">
+          <label for="strokeW">Stroke</label>
+          <input type="number" id="strokeW" min="0" max="200" step="0.5" value="0">
+          <input type="color" id="strokeC" value="#ff3d7f">
+        </div>
+        <button class="b" id="resetQuad">Reset corners</button>
+      </div>
+
+      <div class="sec">
+        <h2>Snapping</h2>
+        <label class="chk"><input type="checkbox" id="snapPixel" checked>
+          Pixel grid <small>&nbsp;round to whole px</small></label>
+        <label class="chk"><input type="checkbox" id="snapAlign" checked>
+          Corners and edges <small>&nbsp;align to other handles</small></label>
+        <div class="row">
+          <label for="gridStep">Step</label>
+          <input type="number" id="gridStep" min="0.25" max="100" step="0.25" value="1">
+          <span class="val">px</span>
+        </div>
+        <div class="hint">Hold <kbd>⌘</kbd> while dragging to ignore snapping.
+          <kbd>←↑↓→</kbd> nudge 1px, <kbd>⇧</kbd> 10px, <kbd>⌫</kbd> resets a corner.</div>
+      </div>
+
+      <div class="sec">
+        <h2>View</h2>
+        <div class="two">
+          <button class="b" id="fit">Fit</button>
+          <button class="b" id="zoom100">100%</button>
+        </div>
+        <label class="chk" style="margin-top:8px"><input type="checkbox" id="showGrid" checked>
+          Show pixel grid</label>
+        <div class="row" style="margin-top:4px">
+          <label for="bg">Canvas</label>
+          <select id="bg" style="flex:1;background:var(--field);color:var(--ink);
+            border:1px solid var(--line);border-radius:5px;padding:4px 6px">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="checker">Checker</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:none;padding:11px 13px;border-top:1px solid var(--line)">
+      <div class="two">
+        <button class="b" id="copy">Copy SVG</button>
+        <button class="b pri" id="download">Download</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script src="warp.js"></script>
+<script src="importer.js"></script>
+<script src="snap.js"></script>
+<script src="samples.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
