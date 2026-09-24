@@ -3,11 +3,14 @@
 A browser tool for bending vector artwork. Paste any SVG, pick a deformation, drag the
 four corners, export the result.
 
-```sh
-cd ~/Codes/warp-tool && python3 -m http.server 8900 --bind 127.0.0.1
-```
+**→ [aditya31sharma.github.io/warp](https://aditya31sharma.github.io/warp/)**
 
-Then <http://127.0.0.1:8900/>. No build step, no dependencies, no server logic.
+Everything runs in the browser. Nothing is uploaded, and there is no server. To run it
+locally instead:
+
+```sh
+python3 -m http.server 8900 --bind 127.0.0.1
+```
 
 ## Getting artwork in
 
@@ -103,3 +106,5 @@ node -e "const W=require('./warp.js');
   its fill rule.
 - Gradients, patterns, clip paths, masks and text elements are not supported. Convert
   text to outlines first.
+- The built-in type samples are outlined from Geist Mono under the SIL Open Font
+  License. See `LICENSE-SAMPLES.md`.
