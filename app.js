@@ -3,6 +3,15 @@
   'use strict';
 
   var $ = function (id) { return document.getElementById(id); };
+
+  // Surface boot and runtime errors instead of failing silently to a blank page.
+  window.addEventListener('error', function (e) {
+    var box = $('err');
+    if (!box) return;
+    box.textContent = (e.message || 'error') + '  @' +
+      String(e.filename || '').split('/').pop() + ':' + e.lineno;
+    box.classList.add('on');
+  });
   var SVGNS = 'http://www.w3.org/2000/svg';
   var NUDGE = 1, BIG = 10, SNAP_PX = 6, HANDLE_R = 5.5;
 
@@ -12,7 +21,7 @@
     quad: null,            // four corners in world px
     selected: -1,
     view: { x: 0, y: 0, k: 1 },
-    guides: [], out: []
+    guides: [], out: [], seed: 1, grungeStats: null
   };
 
   /* ---------- geometry helpers ---------- */
@@ -41,6 +50,22 @@
 
   /* ---------- the warp ---------- */
 
+  function grungeOpts() {
+    return {
+      grain: +$('gGrain').value / 10,
+      roughness: +$('gRough').value / 10,
+      bias: +$('gBias').value / 10,
+      blotchAmount: +$('gBlotch').value / 100,
+      spatter: +$('gSpatter').value / 100,
+      pit: +$('gPit').value / 100,
+      pxPerUnit: +$('gRes').value / 10,
+      detail: +$('gSimp').value / 100,
+      minArea: 2.2,
+      smooth: 1,
+      seed: S.seed
+    };
+  }
+
   function compute() {
     if (!S.items.length) { S.out = []; return; }
     var opts = { preset: S.preset, strength: S.strength, smooth: S.smooth,
@@ -50,6 +75,27 @@
       var parts = Warp.warp([it.d], S.bbox, opts);
       if (parts.length) S.out.push({ d: parts.join(' '), src: it });
     });
+
+    // Grunge runs last, on the warped outline, so the erosion follows the bend.
+    if ($('gOn').checked && S.out.length) {
+      var go = grungeOpts();
+      var total = { kept: 0, points: 0 };
+      var t0 = performance.now();
+      S.out = S.out.map(function (o) {
+        var bb = Warp.bounds([o.d]);
+        if (!bb.width || !bb.height) return o;
+        // Keep the mask to a sane size however far the user pushes Detail.
+        var px = Math.min(go.pxPerUnit, 2600 / Math.max(bb.width, bb.height));
+        var r = Grunge.fromPaths([o.d], bb, Object.assign({}, go, { pxPerUnit: px }));
+        if (!r.d) return o;
+        total.kept += r.stats.kept; total.points += r.stats.points;
+        return { d: r.d, src: o.src };
+      });
+      S.grungeStats = { ms: Math.round(performance.now() - t0),
+                        rings: total.kept, points: total.points };
+    } else {
+      S.grungeStats = null;
+    }
   }
 
   function allPaths() {
@@ -200,6 +246,10 @@
       bits.push('corner ' + (Math.round(c.x * 10) / 10) + ', ' + (Math.round(c.y * 10) / 10));
     }
     $('hud').textContent = bits.join('  ·  ');
+    $('gStats').textContent = S.grungeStats
+      ? S.grungeStats.rings + ' shapes, ' + S.grungeStats.points.toLocaleString() +
+        ' points, ' + S.grungeStats.ms + 'ms'
+      : '';
   }
 
   function render() { compute(); draw(); }
@@ -377,6 +427,41 @@
   $('srcColours').onchange = draw;
   $('strokeW').oninput = draw;
   $('strokeC').oninput = draw;
+  var G_IDS = ['gGrain', 'gRough', 'gBias', 'gBlotch', 'gSpatter', 'gPit', 'gRes', 'gSimp'];
+  var G_FMT = {
+    gGrain: function (v) { return (v / 10).toFixed(1); },
+    gRough: function (v) { return (v / 10).toFixed(1); },
+    gBias: function (v) { return (v / 10).toFixed(1); },
+    gRes: function (v) { return (v / 10).toFixed(1); },
+    gSimp: function (v) { return (v / 100).toFixed(2); }
+  };
+  var G_DEFAULT = { gGrain: 16, gRough: 70, gBias: 0, gBlotch: 85, gSpatter: 45,
+                    gPit: 14, gRes: 20, gSimp: 45 };
+
+  function syncGrungeLabels() {
+    G_IDS.forEach(function (id) {
+      var v = +$(id).value;
+      $(id + 'Val').textContent = G_FMT[id] ? G_FMT[id](v) : String(v);
+    });
+  }
+
+  G_IDS.forEach(function (id) {
+    $(id).oninput = function () { syncGrungeLabels(); render(); };
+  });
+  $('gOn').onchange = function () {
+    $('gControls').style.display = this.checked ? '' : 'none';
+    render();
+  };
+  $('gSeed').onclick = function () {
+    S.seed = (Math.random() * 100000) | 0;
+    render();
+  };
+  $('gReset').onclick = function () {
+    Object.keys(G_DEFAULT).forEach(function (k) { $(k).value = G_DEFAULT[k]; });
+    syncGrungeLabels(); render();
+  };
+  syncGrungeLabels();
+
   $('showGrid').onchange = draw;
   $('bg').onchange = function () {
     var st = $('stage');
@@ -412,6 +497,65 @@
     var e = $('err'); e.textContent = msg; e.classList.add('on');
   }
 
+  /* ---------- raster images ---------- */
+
+  function traceImage() {
+    var img = S.image;
+    if (!img) return;
+    var levels = +$('levels').value;
+    var cut = +$('imgThresh').value / 100;
+    var r = Grunge.masksFromImage(img, 1600, levels, cut, false);
+    var items = [];
+    for (var k = levels - 1; k >= 0; k--) {     // lightest band first, ink on top
+      var rings = Grunge.traceRings(r.masks[k], r.w, r.h);
+      var kept = [];
+      for (var i = 0; i < rings.length; i++) {
+        if (Math.abs(Grunge.ringArea(rings[i])) < 3) continue;
+        var simp = Grunge.rdp(rings[i], 0.6);
+        if (simp.length > 2) kept.push(Grunge.chaikin(simp, 1));
+      }
+      if (!kept.length) continue;
+      // Darkest band is black; lighter bands step towards paper.
+      var t = levels === 1 ? 0 : k / levels;
+      var g = Math.round(t * 205);
+      var hex = '#' + [g, g, g].map(function (n) {
+        return ('0' + n.toString(16)).slice(-2);
+      }).join('');
+      items.push({ d: Grunge.ringsToPath(kept, { scale: 1 }),
+                   fill: hex, stroke: 'none', strokeWidth: 0 });
+    }
+    if (!items.length) { fail('Nothing came through at that cutoff'); return; }
+    $('srcColours').checked = true;
+    load(items, S.imageName);
+  }
+
+  function loadImageFile(file) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      S.image = img;
+      S.imageName = file.name;
+      $('imgRow').style.display = '';
+      $('imgRow2').style.display = '';
+      traceImage();
+    };
+    img.onerror = function () { fail('Could not read that image'); };
+    img.src = url;
+  }
+
+  function isImage(file) {
+    return /^image\/(png|jpeg|jpg|webp|gif|bmp)$/i.test(file.type) ||
+           /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+  }
+
+  $('levels').oninput = function () {
+    $('levelsVal').textContent = this.value; traceImage();
+  };
+  $('imgThresh').oninput = function () {
+    $('imgThreshVal').textContent = this.value; traceImage();
+  };
+
   function loadMarkup(markup, name) {
     try {
       var r = SvgIn.parse(markup);
@@ -426,7 +570,8 @@
   $('file').onchange = function () {
     var f = this.files[0];
     if (!f) return;
-    f.text().then(function (t) { loadMarkup(t, f.name); });
+    if (isImage(f)) loadImageFile(f);
+    else f.text().then(function (t) { loadMarkup(t, f.name); });
     this.value = '';
   };
   $('pasteBtn').onclick = function () {
@@ -443,6 +588,10 @@
     var items = e.clipboardData && e.clipboardData.items;
     if (items) {
       for (var i = 0; i < items.length; i++) {
+        if (/^image\/(png|jpeg|webp)$/.test(items[i].type)) {
+          var im = items[i].getAsFile();
+          if (im) { e.preventDefault(); loadImageFile(im); return; }
+        }
         if (items[i].type === 'image/svg+xml') {
           var f = items[i].getAsFile();
           if (f) { e.preventDefault(); f.text().then(function (t) { loadMarkup(t, f.name); }); return; }
@@ -462,7 +611,9 @@
   });
   stage.addEventListener('drop', function (e) {
     var f = e.dataTransfer.files[0];
-    if (f) f.text().then(function (t) { loadMarkup(t, f.name); });
+    if (!f) return;
+    if (isImage(f)) loadImageFile(f);
+    else f.text().then(function (t) { loadMarkup(t, f.name); });
   });
 
   /* ---------- export ---------- */
@@ -515,6 +666,9 @@
     b.onclick = function () {
       var s = SAMPLES[+b.dataset.i];
       $('srcColours').checked = false;
+      S.image = null;
+      $('imgRow').style.display = 'none';
+      $('imgRow2').style.display = 'none';
       load([{ d: s.d, fill: '#ffffff', stroke: 'none', strokeWidth: 0 }], s.name);
     };
   });
@@ -563,6 +717,29 @@
     fetch(q.get('load')).then(function (r) { return r.text(); })
       .then(function (t) { loadMarkup(t, q.get('load')); })
       .catch(function () { fail('Could not fetch ' + q.get('load')); });
+  }
+  if (q.get('sample')) {
+    var si = q.get('sample') | 0;
+    if (SAMPLES[si]) {
+      $('srcColours').checked = false;
+      load([{ d: SAMPLES[si].d, fill: '#ffffff', stroke: 'none', strokeWidth: 0 }],
+           SAMPLES[si].name);
+    }
+  }
+  if (q.get('grunge')) {
+    $('gOn').checked = true;
+    $('gControls').style.display = '';
+    q.get('grunge').split(',').forEach(function (kv) {
+      var a = kv.split(':');
+      if (a.length === 2 && $(a[0])) $(a[0]).value = a[1];
+    });
+    syncGrungeLabels();
+    render();
+  }
+  if (q.get('image')) {
+    fetch(q.get('image')).then(function (r) { return r.blob(); }).then(function (b) {
+      loadImageFile(new File([b], q.get('image'), { type: b.type || 'image/png' }));
+    }).catch(function () { fail('could not fetch ' + q.get('image')); });
   }
   if (q.get('corner')) {
     var parts = q.get('corner').split(',').map(Number);

@@ -76,6 +76,56 @@ off gives faceted polygons.
 Each preset's icon is drawn by running the real engine on a sample mark, so the icon
 always matches what the preset does.
 
+## Grunge
+
+Erodes the outline into ink spatter. It is a real geometry operation, not a raster
+filter or a texture overlay: the result is vector paths you can scale.
+
+How it works, which is the vector equivalent of the stacked spatter-and-texture
+technique used in Photoshop:
+
+1. The artwork is rasterised to a coverage mask.
+2. An exact signed distance field is built from that mask, using Felzenszwalb and
+   Huttenlocher's linear-time transform (two 1D passes over lower envelopes of
+   parabolas).
+3. Fractal noise is **added to the distance**, so the outline wanders in and out.
+   Because the noise is added to a distance rather than to a colour, the effect
+   naturally fades out away from the edge: deep inside the stroke the distance is
+   far larger than the noise, so the core stays solid, while within a band of roughly
+   the noise amplitude the outline breaks into speckle.
+4. A second, much slower noise field modulates the amplitude, so some regions erode
+   hard and others survive. That patchiness is what stops it looking like a filter.
+5. The result is re-thresholded at zero and traced back to contours with marching
+   squares, simplified, and emitted as paths. Holes are wound against their shell so
+   counters stay hollow.
+
+| Control | What it does |
+|---|---|
+| Grain | Size of the noise cell in mask pixels. Small is fine spatter, large is chunky tearing. |
+| Erosion | How far the outline is allowed to wander, in mask pixels. This is the main dial. |
+| Weight | Pushes the whole outline in or out: negative eats the shape away, positive fattens it. |
+| Patchy | How much the slow field varies erosion across the artwork. Zero is uniform, which looks mechanical. |
+| Spatter | Loose specks thrown clear of the edge, thinning with distance. |
+| Pits | Holes opened inside the strokes. |
+| Detail | Mask resolution. Higher resolves finer grain and costs more paths. |
+| Simplify | Contour simplification tolerance. Raise it to cut the path count. |
+
+**New seed** re-rolls the noise. Everything is seeded, so the same settings and seed
+always give the same result.
+
+The readout under the controls shows shapes, points and milliseconds. Fine grain with
+high erosion can produce thousands of contours; that is the honest cost of spatter in
+vectors rather than pixels. Raise Simplify or lower Detail to bring it down.
+
+Grunge runs **after** the warp, on the deformed outline, so the erosion follows the bend.
+
+## Images
+
+Drop or paste a PNG, JPEG or WebP and it is traced to vectors: luminance is thresholded
+into **Tones** bands, each band traced to contours and filled with a grey step. **Cutoff**
+moves the threshold. One tone gives a hard black-and-white stamp, which is what suits
+the grunge treatment; up to four gives a posterised version.
+
 ## Export
 
 **Copy SVG** puts the markup on the clipboard. **Download** saves it. Output is one

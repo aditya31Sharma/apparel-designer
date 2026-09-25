@@ -39,7 +39,17 @@
           <button class="b" id="pasteBtn">Paste</button>
         </div>
         <div class="samples" id="samples"></div>
-        <input type="file" id="file" accept=".svg,image/svg+xml" hidden>
+                <div class="row" id="imgRow" style="display:none">
+          <label for="levels">Tones</label>
+          <input type="range" id="levels" min="1" max="4" value="1">
+          <span class="val" id="levelsVal">1</span>
+        </div>
+        <div class="row" id="imgRow2" style="display:none">
+          <label for="imgThresh">Cutoff</label>
+          <input type="range" id="imgThresh" min="5" max="95" value="55">
+          <span class="val" id="imgThreshVal">55</span>
+        </div>
+        <input type="file" id="file" accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp" hidden>
         <div class="err" id="err"></div>
         <div class="hint">Paste SVG markup with <kbd>⌘V</kbd> anywhere, or drop a file
           on the canvas.</div>
@@ -72,6 +82,59 @@
           <input type="color" id="strokeC" value="#ff3d7f">
         </div>
         <button class="b" id="resetQuad">Reset corners</button>
+      </div>
+
+      <div class="sec">
+        <h2>Grunge</h2>
+        <label class="chk"><input type="checkbox" id="gOn"> Enable
+          <small>&nbsp;erode and spatter</small></label>
+        <div id="gControls" style="display:none">
+          <div class="row">
+            <label for="gGrain">Grain</label>
+            <input type="range" id="gGrain" min="6" max="70" value="16">
+            <span class="val" id="gGrainVal">1.6</span>
+          </div>
+          <div class="row">
+            <label for="gRough">Erosion</label>
+            <input type="range" id="gRough" min="0" max="200" value="70">
+            <span class="val" id="gRoughVal">7.0</span>
+          </div>
+          <div class="row">
+            <label for="gBias">Weight</label>
+            <input type="range" id="gBias" min="-60" max="60" value="0">
+            <span class="val" id="gBiasVal">0.0</span>
+          </div>
+          <div class="row">
+            <label for="gBlotch">Patchy</label>
+            <input type="range" id="gBlotch" min="0" max="100" value="85">
+            <span class="val" id="gBlotchVal">85</span>
+          </div>
+          <div class="row">
+            <label for="gSpatter">Spatter</label>
+            <input type="range" id="gSpatter" min="0" max="100" value="45">
+            <span class="val" id="gSpatterVal">45</span>
+          </div>
+          <div class="row">
+            <label for="gPit">Pits</label>
+            <input type="range" id="gPit" min="0" max="45" value="14">
+            <span class="val" id="gPitVal">14</span>
+          </div>
+          <div class="row">
+            <label for="gRes">Detail</label>
+            <input type="range" id="gRes" min="10" max="45" value="20">
+            <span class="val" id="gResVal">2.0</span>
+          </div>
+          <div class="row">
+            <label for="gSimp">Simplify</label>
+            <input type="range" id="gSimp" min="15" max="150" value="45">
+            <span class="val" id="gSimpVal">0.45</span>
+          </div>
+          <div class="two" style="margin-top:2px">
+            <button class="b" id="gSeed">New seed</button>
+            <button class="b" id="gReset">Reset</button>
+          </div>
+          <div class="hint" id="gStats"></div>
+        </div>
       </div>
 
       <div class="sec">
@@ -121,6 +184,7 @@
 <script src="warp.js"></script>
 <script src="importer.js"></script>
 <script src="snap.js"></script>
+<script src="grunge.js"></script>
 <script src="samples.js"></script>
 <script src="app.js"></script>
 </body>
