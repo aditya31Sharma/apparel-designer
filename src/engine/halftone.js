@@ -28,11 +28,39 @@
   /* Grey component replacement. gcr 1 pulls the full common grey out into black,
    * which is what keeps shadows from going muddy when three inks stack. gcr 0
    * leaves the black channel empty and prints everything from CMY. */
+  /* Scratch buffers, kept between calls.
+   *
+   * A single screening of a 1296px image allocates four separation planes and
+   * four summed-area tables: around eighty megabytes, thrown away immediately.
+   * Doing that on every slider tick left the worker collecting garbage for
+   * longer than it spent screening, which showed up as a job taking two hundred
+   * milliseconds of wall time for sixty milliseconds of work. Holding onto the
+   * buffers costs a fixed amount of memory and removes the pauses entirely. */
+  var scratch = { n: 0, planes: null, sat: null, satN: 0 };
+
+  function planesFor(n) {
+    if (!scratch.planes || scratch.n !== n) {
+      scratch.planes = [new Float32Array(n), new Float32Array(n),
+                        new Float32Array(n), new Float32Array(n)];
+      scratch.n = n;
+    }
+    return scratch.planes;
+  }
+
+  function satFor(n) {
+    if (!scratch.sat || scratch.satN !== n) {
+      scratch.sat = new Float64Array(n);
+      scratch.satN = n;
+    }
+    return scratch.sat;
+  }
+
   function separate(rgba, w, h, opts) {
     var gcr = opts && opts.gcr !== undefined ? opts.gcr : 1;
     var n = w * h;
-    var C = new Float32Array(n), M = new Float32Array(n);
-    var Y = new Float32Array(n), K = new Float32Array(n);
+    var pl = planesFor(n);
+    var C = pl[0], M = pl[1], Y = pl[2], K = pl[3];
+    C.fill(0); M.fill(0); Y.fill(0); K.fill(0);
 
     for (var i = 0, p = 0; i < n; i++, p += 4) {
       var a = rgba[p + 3] / 255;
@@ -61,9 +89,10 @@
   /* sat has one extra row and column of zeros, so a box sum never needs a bounds
    * check. Float32 loses precision past a few million accumulated samples, so the
    * table is Float64 even though the input is Float32. */
-  function buildSat(ch, w, h) {
+  function buildSat(ch, w, h, reuse) {
     var sw = w + 1;
-    var sat = new Float64Array(sw * (h + 1));
+    var sat = reuse || new Float64Array(sw * (h + 1));
+    if (reuse) sat.fill(0);
     for (var y = 0; y < h; y++) {
       var rowSum = 0;
       var src = y * w, cur = (y + 1) * sw, prev = y * sw;
@@ -333,7 +362,7 @@
     for (var i = 0; i < CHANNELS.length; i++) {
       var ch = CHANNELS[i];
       if (!on[ch.key]) continue;
-      var sat = buildSat(sep[ch.key], w, h);
+      var sat = buildSat(sep[ch.key], w, h, satFor((w + 1) * (h + 1)));
       var dots = screenChannel(sat, w, h, angles[ch.key] || 0, p, i * 1013);
       total += dots.length / STRIDE;
       out.push({ key: ch.key, label: ch.label, colour: ch.colour, dots: dots });
@@ -476,6 +505,7 @@
     ANGLE_PRESETS: ANGLE_PRESETS,
     separate: separate,
     buildSat: buildSat,
+    releaseScratch: function () { scratch = { n: 0, planes: null, sat: null, satN: 0 }; },
     boxMean: boxMean,
     screen: screen,
     screenChannel: screenChannel,

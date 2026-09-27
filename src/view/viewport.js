@@ -148,15 +148,16 @@
 
         if (L.shapes) {
           L.shapes.forEach(function (sh) {
+            var paths = sh.paths || [sh.path];
             if (sh.fill && sh.fill !== 'none') {
               c.fillStyle = sh.fill;
-              c.fill(sh.path, sh.rule || 'nonzero');
+              for (var i = 0; i < paths.length; i++) c.fill(paths[i], sh.rule || 'nonzero');
             }
             if (sh.stroke && sh.stroke !== 'none' && sh.strokeWidth > 0) {
               c.strokeStyle = sh.stroke;
               c.lineWidth = sh.strokeWidth;
               c.lineJoin = 'round'; c.lineCap = 'round';
-              c.stroke(sh.path);
+              for (var j = 0; j < paths.length; j++) c.stroke(paths[j]);
             }
           });
         }
@@ -173,7 +174,7 @@
           c.globalCompositeOperation = 'multiply';
           L.plates.forEach(function (pl) {
             c.fillStyle = pl.colour;
-            c.fill(pl.path);
+            for (var q = 0; q < pl.paths.length; q++) c.fill(pl.paths[q]);
           });
           c.globalCompositeOperation = prev;
         }
@@ -349,10 +350,19 @@
     /* Path data to Path2D. Done once per compute, never per frame. */
     vp.pathOf = function (d) { return new Path2D(d); };
 
-    /* A plate of halftone dots to one Path2D. The dot outlines come from the
-     * same emitDot the exporter uses, so the screen and the file agree. */
-    vp.platePath = function (plate, pattern, fuzziness, seed) {
-      var p = new Path2D();
+    /* A plate of halftone dots, as Path2D objects. The outlines come from the
+     * same emitDot the exporter uses, so the screen and the file agree.
+     *
+     * Split across several paths for the same reason contours are: piling tens
+     * of thousands of subpaths into one Path2D is quadratic in Chrome. Eighty
+     * thousand cross-shaped dots took seven seconds as a single path and eleven
+     * milliseconds in chunks. Round dots happen to escape it because arc() takes
+     * a different route, but the other five shapes do not. */
+    var PLATE_CHUNK = 250;
+
+    vp.platePaths = function (plate, pattern, fuzziness, seed) {
+      var out = [];
+      var p = null;
       var sink = {
         moveTo: function (x, y) { p.moveTo(x, y); },
         lineTo: function (x, y) { p.lineTo(x, y); },
@@ -362,11 +372,13 @@
           p.moveTo(cx + rx, cy); p.ellipse(cx, cy, rx, ry, rot, 0, Math.PI * 2);
         }
       };
-      var d = plate.dots;
+      var d = plate.dots, n = 0;
       for (var o = 0; o < d.length; o += H.STRIDE) {
+        if (n % PLATE_CHUNK === 0) { p = new Path2D(); out.push(p); }
         H.emitDot(sink, pattern, d[o], d[o + 1], d[o + 2], d[o + 3], fuzziness, seed | 0);
+        n++;
       }
-      return p;
+      return out.length ? out : [new Path2D()];
     };
 
     size();

@@ -7,26 +7,25 @@
  */
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const http = require('http');
+const net = require('net');
 
 const ROOT = path.join(__dirname, '..');
 let win = null;
 
-/* Workers cannot be started from a file:// page, and the whole reason the heavy
- * compute stays off the main thread is that they can. So the app is served over
- * its own scheme instead, which also lets every response carry the isolation
- * headers SharedArrayBuffer needs. */
-const SCHEME = 'app';
-
-protocol.registerSchemesAsPrivileged([{
-  scheme: SCHEME,
-  privileges: {
-    standard: true, secure: true, supportFetchAPI: true,
-    corsEnabled: true, stream: true
-  }
-}]);
+/* The app is served over a loopback HTTP origin rather than opened off disk.
+ * Two reasons, both load-bearing:
+ *   - a file:// page cannot start a Web Worker at all, and the heavy compute
+ *     has to be off the main thread
+ *   - cross-origin isolation, which is what SharedArrayBuffer needs, is only
+ *     granted to http and https origins. A custom scheme does not get it, which
+ *     I found out the hard way. With it, the worker pool shares one buffer
+ *     instead of copying a four megabyte mask per band.
+ * The server binds to 127.0.0.1 on a port the OS picks, and refuses anything
+ * that is not a GET for a file inside the app directory. */
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -35,45 +34,52 @@ const MIME = {
   '.woff2': 'font/woff2', '.wasm': 'application/wasm'
 };
 
-function registerAppProtocol() {
-  protocol.handle(SCHEME, async (request) => {
-    const url = new URL(request.url);
-    let rel = decodeURIComponent(url.pathname);
-    if (rel === '/' || rel === '') rel = '/index.html';
+let serverOrigin = null;
 
-    // Never serve anything outside the app directory, whatever the URL says.
-    const file = path.normalize(path.join(ROOT, rel));
-    if (!file.startsWith(ROOT)) return new Response('forbidden', { status: 403 });
+function startServer() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(async (req, res) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        res.writeHead(405); res.end('method not allowed'); return;
+      }
+      let rel;
+      try {
+        rel = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
+      } catch (e) {
+        res.writeHead(400); res.end('bad path'); return;
+      }
+      if (rel === '/' || rel === '') rel = '/index.html';
 
-    try {
-      const body = await fs.readFile(file);
-      return new Response(body, {
-        status: 200,
-        headers: {
+      // Never serve anything outside the app directory, whatever the URL says.
+      const file = path.normalize(path.join(ROOT, rel));
+      if (!file.startsWith(ROOT + path.sep) && file !== ROOT) {
+        res.writeHead(403); res.end('forbidden'); return;
+      }
+
+      try {
+        const body = await fs.readFile(file);
+        res.writeHead(200, {
           'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
-          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Content-Length': body.length,
+          // These two are the whole point: they are what turns on
+          // crossOriginIsolated, and no static host can set them.
           'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'require-corp',
           'Cross-Origin-Resource-Policy': 'same-origin',
-          'Cache-Control': 'no-cache'
-        }
-      });
-    } catch (err) {
-      return new Response('not found: ' + rel, { status: 404 });
-    }
-  });
-}
+          'Cache-Control': 'no-store'
+        });
+        res.end(req.method === 'HEAD' ? undefined : body);
+      } catch (err) {
+        res.writeHead(404); res.end('not found');
+      }
+    });
 
-/* Cross-origin isolation is what SharedArrayBuffer needs, and no static host
- * can set these headers. Setting them here is the concrete reason the desktop
- * build can move worker results without copying them. */
-function applyIsolationHeaders(session) {
-  session.webRequest.onHeadersReceived((details, cb) => {
-    cb({
-      responseHeaders: Object.assign({}, details.responseHeaders, {
-        'Cross-Origin-Opener-Policy': ['same-origin'],
-        'Cross-Origin-Embedder-Policy': ['require-corp'],
-        'Cross-Origin-Resource-Policy': ['same-origin']
-      })
+    server.on('error', reject);
+    // Port 0 lets the OS pick a free one, so two copies never collide.
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      serverOrigin = 'http://127.0.0.1:' + port;
+      resolve(serverOrigin);
     });
   });
 }
@@ -99,8 +105,7 @@ function createWindow() {
     }
   });
 
-  applyIsolationHeaders(win.webContents.session);
-  win.loadURL(SCHEME + '://bundle/index.html');
+  win.loadURL(serverOrigin + '/index.html');
   win.once('ready-to-show', () => win.show());
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -218,13 +223,20 @@ ipcMain.handle('bg:status', async () => {
 /* ---------- lifecycle ---------- */
 
 const SELFTEST = process.argv.includes('--selftest');
+const BENCH = process.argv.includes('--bench');
+const SUITE = process.argv.includes('--suite');
+// Benchmarks have to run at the pixel density a real display has, or the cache
+// is a quarter of the size it will be in use and every number flatters.
+const DPR_ARG = process.argv.find((a) => a.startsWith('--dpr='));
+if (DPR_ARG) app.commandLine.appendSwitch('force-device-scale-factor', DPR_ARG.split('=')[1]);
 
-app.whenReady().then(() => {
-  registerAppProtocol();
+app.whenReady().then(async () => {
+  await startServer();
   createWindow();
   buildMenu();
-  if (SELFTEST) {
-    require('./selftest.js').run(win, app, path.join(ROOT, 'build'))
+  if (SELFTEST || BENCH || SUITE) {
+    const mod = SUITE ? './suite.js' : BENCH ? './bench.js' : './selftest.js';
+    require(mod).run(win, app, path.join(ROOT, 'build'))
       .catch((err) => { console.error(err); app.exit(1); });
   }
   app.on('activate', () => {

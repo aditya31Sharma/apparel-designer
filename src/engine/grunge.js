@@ -251,6 +251,29 @@
     return pts;
   }
 
+  /* Rings as flat numbers: x,y pairs in `points`, and the index each ring starts
+   * at in `offsets`. This is what crosses to the main thread, because building a
+   * path string only to parse it straight back into a Path2D is pure waste. */
+  function ringsToArrays(rings, opts) {
+    var scale = opts.scale || 1, ox = opts.ox || 0, oy = opts.oy || 0;
+    var total = 0, i, r;
+    for (i = 0; i < rings.length; i++) total += rings[i].length;
+    var points = new Float32Array(total * 2);
+    var offsets = new Int32Array(rings.length + 1);
+    var n = 0;
+    for (i = 0; i < rings.length; i++) {
+      offsets[i] = n;
+      r = rings[i];
+      for (var j = 0; j < r.length; j++) {
+        points[n * 2] = r[j].x * scale + ox;
+        points[n * 2 + 1] = r[j].y * scale + oy;
+        n++;
+      }
+    }
+    offsets[rings.length] = n;
+    return { points: points, offsets: offsets };
+  }
+
   function ringsToPath(rings, opts) {
     var scale = opts.scale || 1, ox = opts.ox || 0, oy = opts.oy || 0;
     var f = function (n) { return Math.round(n * 100) / 100; };
@@ -271,6 +294,7 @@
   G.rdp = rdp;
   G.chaikin = chaikin;
   G.ringsToPath = ringsToPath;
+  G.ringsToArrays = ringsToArrays;
 })(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- textures ---------- */
@@ -464,6 +488,10 @@
     textureAmount: 0,  // 0..1, how much of the field knocks ink out
     textureScale: 3,   // px per texture cell
     textureInvert: false,
+    // How coarsely the texture field is sampled, as a fraction of its own
+    // scale. 0 samples every pixel exactly; 0.6 is a pixel and a half per
+    // feature, which is not visible and is several times cheaper.
+    textureStep: 0.6,
     textureImage: null,// { data: Float32Array 0..1, w, h } when texture is 'image'
 
     // melt: blur the coverage and re-cut it
@@ -482,11 +510,17 @@
     return r;
   }
 
-  /* mask: Uint8Array of w*h, non-zero where the artwork is.
-   * Returns { rings, stats } in mask pixel coordinates. */
-  function erode(mask, w, h, options) {
+  /* The pixel pass, over rows y0 up to y1 only.
+   *
+   * Pure: it reads the distance field and writes `out`, and every value it
+   * needs beyond that comes from the pixel's own coordinates and the seed. That
+   * is what lets a pool of workers each take a band of rows and produce exactly
+   * what one thread would have, bit for bit.
+   */
+  function erodePixels(d, out, w, h, options, y0, y1) {
     var p = opts(options);
-    var d = G.sdf(mask, w, h);
+    if (y0 === undefined) y0 = 0;
+    if (y1 === undefined) y1 = h;
 
     var nGrain = G.makeNoise(p.seed);
     var nBlotch = G.makeNoise(p.seed + 977);
@@ -499,7 +533,31 @@
     var sgs = 1 / Math.max(0.4, p.grain * 1.25);
     var bs = 1 / Math.max(4, p.blotch);
     var ts = 1 / Math.max(0.4, p.textureScale);
-    var out = new Uint8Array(w * h);
+
+    /* The texture field is the most expensive thing in here, because it is the
+     * one term a pixel deep inside the shape still has to evaluate: a four
+     * octave fbm is sixteen-odd hash lookups, and a traced photo is four
+     * million pixels of interior. The field only varies over `textureScale`
+     * pixels though, so evaluating it per pixel oversamples it by that factor.
+     * Bake it onto a lattice once and interpolate instead. */
+    function bakeField(fn, step) {
+      var gw = Math.ceil(w / step) + 2, gh = Math.ceil(h / step) + 2;
+      var grid = new Float32Array(gw * gh);
+      for (var gy = 0; gy < gh; gy++) {
+        var row = gy * gw, sy = gy * step;
+        for (var gx = 0; gx < gw; gx++) grid[row + gx] = fn(gx * step, sy);
+      }
+      var inv = 1 / step;
+      return function (x, y) {
+        var fx = x * inv, fy = y * inv;
+        var ix = fx | 0, iy = fy | 0;
+        var tx = fx - ix, ty = fy - iy;
+        var o = iy * gw + ix;
+        var top = grid[o] + (grid[o + 1] - grid[o]) * tx;
+        var bot = grid[o + gw] + (grid[o + gw + 1] - grid[o + gw]) * tx;
+        return top + (bot - top) * ty;
+      };
+    }
 
     // texture sampler, resolved once so the pixel loop stays a straight line
     var texField = null;
@@ -519,9 +577,14 @@
         };
       } else if (G.TEXTURES[p.texture]) {
         var fn = G.TEXTURES[p.texture];
-        texField = p.textureInvert
+        var raw = p.textureInvert
           ? function (x, y) { return 1 - fn(texN, x * ts, y * ts); }
           : function (x, y) { return fn(texN, x * ts, y * ts); };
+        // Halftone is a hard grid and smoothing it would blur the dot edges, so
+        // that one keeps sampling exactly.
+        var step = p.texture === 'halftone'
+          ? 1 : Math.max(1, Math.round(p.textureScale * (p.textureStep || 0.6)));
+        texField = step > 1 ? bakeField(raw, step) : raw;
       }
     }
     if (texField) texField = G.dither(texField);
@@ -534,7 +597,7 @@
     var reachIn = Math.max(wander, p.pit > 0 ? p.pitDepth : 0);
     var skipCore = !texField;
 
-    for (var y = 0; y < h; y++) {
+    for (var y = y0; y < y1; y++) {
       for (var x = 0; x < w; x++) {
         var i = y * w + x;
         var dist = d[i];
@@ -587,6 +650,22 @@
       }
     }
 
+    return out;
+  }
+
+  /* mask: Uint8Array of w*h, non-zero where the artwork is.
+   * Returns { rings, stats } in mask pixel coordinates. */
+  function erode(mask, w, h, options) {
+    var p = opts(options);
+    var d = G.sdf(mask, w, h);
+    var out = new Uint8Array(w * h);
+    erodePixels(d, out, w, h, options, 0, h);
+    return finish(out, w, h, options);
+  }
+
+  /* Everything after the pixel pass: melt, trace, simplify, smooth. */
+  function finish(out, w, h, options) {
+    var p = opts(options);
     if (p.meltRadius > 0) out = G.melt(out, w, h, p.meltRadius, p.meltCut);
 
     var rings = G.traceRings(out, w, h);
@@ -609,6 +688,9 @@
 
   G.DEFAULTS = DEFAULTS;
   G.erode = erode;
+  G.erodePixels = erodePixels;
+  G.finish = finish;
+  G.normaliseOpts = opts;
 })(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- browser side: artwork in, paths out ---------- */
@@ -684,12 +766,14 @@
                         (o.spread || 0) + (o.meltRadius || 0) * 3 + 6);
     var R = maskFromPaths(paths, bbox, px, pad);
     var res = G.erode(R.mask, R.w, R.h, o);
-    var d = G.ringsToPath(res.rings, {
-      scale: 1 / px,
-      ox: bbox.x - pad / px,
-      oy: bbox.y - pad / px
-    });
-    return { d: d, stats: res.stats, mask: R };
+    var place = { scale: 1 / px, ox: bbox.x - pad / px, oy: bbox.y - pad / px };
+    var arr = G.ringsToArrays(res.rings, place);
+    return {
+      points: arr.points, offsets: arr.offsets,
+      stats: res.stats, mask: R,
+      // Only built when something actually needs the text.
+      get d() { return G.ringsToPath(res.rings, place); }
+    };
   }
 
   G.maskFromPaths = maskFromPaths;

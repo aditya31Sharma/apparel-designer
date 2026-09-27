@@ -86,6 +86,8 @@ console.log('\ntransform maths');
   ok('flipping across swaps left and right', near(c[0].x, 100) && near(c[1].x, 0));
 })();
 
+var asyncChecks = [];
+
 console.log('\nthe stack never touches the frame');
 (function () {
   Effects.register({
@@ -110,17 +112,21 @@ console.log('\nthe stack never touches the frame');
 
   var before = JSON.stringify([L.transform, L.paint]);
   Doc.effect(L, 'shrink').on = true;
-  var run = Effects.runStack(L, { items: L.source.items, bbox: L.source.bbox }, {});
-  var after = JSON.stringify([L.transform, L.paint]);
 
-  ok('the effect did change the geometry', run.result.items[0].d === 'M0 0H10V5H0Z');
-  ok('position, size, rotation, opacity and fill are untouched', before === after);
-  ok('stats come back per effect', run.stats.shrink && run.stats.shrink.shapes === 1);
+  // runStack is a promise now, because an effect may fan its work across a pool.
+  asyncChecks.push(
+    Effects.runStack(L, { items: L.source.items, bbox: L.source.bbox }, {}).then(function (run) {
+      var after = JSON.stringify([L.transform, L.paint]);
+      ok('the effect did change the geometry', run.result.items[0].d === 'M0 0H10V5H0Z');
+      ok('position, size, rotation, opacity and fill are untouched', before === after);
+      ok('stats come back per effect', run.stats.shrink && run.stats.shrink.shapes === 1);
 
-  Doc.effect(L, 'shrink').on = false;
-  var off = Effects.runStack(L, { items: L.source.items, bbox: L.source.bbox }, {});
-  ok('a switched-off effect passes the artwork straight through',
-    off.result.items[0].d === 'M0 0H100V50H0Z');
+      Doc.effect(L, 'shrink').on = false;
+      return Effects.runStack(L, { items: L.source.items, bbox: L.source.bbox }, {});
+    }).then(function (off) {
+      ok('a switched-off effect passes the artwork straight through',
+        off.result.items[0].d === 'M0 0H100V50H0Z');
+    }));
 })();
 
 console.log('\nhistory');
@@ -215,5 +221,10 @@ console.log('\nwarp still behaves');
   }));
 })();
 
-console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
-process.exit(fail ? 1 : 0);
+Promise.all(asyncChecks).then(function () {
+  console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
+  process.exit(fail ? 1 : 0);
+}).catch(function (err) {
+  console.log('\n  FAIL async checks threw: ' + (err && err.stack || err));
+  process.exit(1);
+});

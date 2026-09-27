@@ -40,22 +40,31 @@
   /* Run the stack in order, skipping anything switched off. Each effect hands
    * its output to the next, so warp-then-dither still works, and so does
    * warp-then-halftone. */
+  /* Async because an effect may fan its work out across a pool and wait for it.
+   * Effects that have nothing to wait for just return a value and this resolves
+   * immediately. */
   function runStack(layer, input, ctx) {
     var cur = input, stats = {};
-    for (var i = 0; i < layer.effects.length; i++) {
-      var entry = layer.effects[i];
-      if (!entry.on) continue;
+    var now = function () {
+      return (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    };
+
+    var chain = Promise.resolve();
+    layer.effects.forEach(function (entry) {
+      if (!entry.on) return;
       var def = defs[entry.type];
-      if (!def || !def.run) continue;
-      var t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-      var out = def.run(cur, entry.params, ctx || {});
-      if (!out) continue;
-      stats[entry.type] = Object.assign({
-        ms: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
-      }, out.stats || {});
-      cur = out;
-    }
-    return { result: cur, stats: stats };
+      if (!def || !def.run) return;
+      chain = chain.then(function () {
+        var t0 = now();
+        return Promise.resolve(def.run(cur, entry.params, ctx || {})).then(function (out) {
+          if (!out) return;
+          stats[entry.type] = Object.assign({ ms: Math.round(now() - t0) }, out.stats || {});
+          cur = out;
+        });
+      });
+    });
+
+    return chain.then(function () { return { result: cur, stats: stats }; });
   }
 
   root.Effects = {

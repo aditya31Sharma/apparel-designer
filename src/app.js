@@ -22,6 +22,7 @@
   var viewport, overlay, panels = {}, worker = null;
   var generation = 0, pending = null, interactive = false, idleTimer = null;
   var pixelsSent = null;          // which layer's pixels the worker already holds
+  var lastPool = 1;
   var renders = {};                 // layerId -> drawable result
   var tool = 'warp';
   var textureImage = null, textureName = '';
@@ -54,11 +55,33 @@
   /* Ask for a recompute. While a slider is held the job runs at reduced
    * resolution, which is roughly six times cheaper and indistinguishable at
    * screen size; the full-quality pass follows when the drag stops. */
+  /* Two passes per change: a reduced one now, the real one once the input stops.
+   *
+   * The full pass is armed only after the preview has landed, never on a timer
+   * running alongside it. Arming it on a timer meant a drag that produced a
+   * result every 80ms had the full pass superseding the preview before it
+   * arrived, so every preview was computed, thrown away, and then waited on
+   * anyway. The wait a person felt was both passes, not the cheap one. */
+  var SETTLE_MS = 160;
+  var wantFull = false;
+
   function markDirty(live) {
     interactive = !!live;
     clearTimeout(idleTimer);
+    wantFull = !!live;
     compute(live ? 0.42 : 1);
-    if (live) idleTimer = setTimeout(function () { compute(1); }, 130);
+  }
+
+  /* Called once a result has been accepted. If that was a preview and nothing
+   * new has come in since, queue the real thing. */
+  function armFullPass() {
+    if (!wantFull) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      if (!wantFull) return;
+      wantFull = false;
+      compute(1);
+    }, SETTLE_MS);
   }
 
   function compute(quality) {
@@ -78,6 +101,7 @@
       quality: quality,
       matte: layer.matte,
       textureImage: textureImage,
+      noPool: !!window.__noPool,
       sourceId: layer.id
     };
 
@@ -105,10 +129,14 @@
         rasterize: window.Raster.rasterize, traceImage: window.Raster.traceImage,
         maskFromPaths: window.Grunge.maskFromPaths
       };
-      var run = Effects.runStack({ effects: job.effects },
+      var t0 = performance.now();
+      Effects.runStack({ effects: job.effects },
         { items: job.items, bbox: job.bbox, matte: job.matte,
-          pixels: layer.source.pixels }, ctx);
-      acceptResult(layer, run.result, run.stats, job.generation);
+          pixels: layer.source.pixels, sourceId: layer.id }, ctx).then(function (run) {
+        acceptResult(layer, run.result, run.stats, job.generation,
+          Math.round(performance.now() - t0));
+        armFullPass();
+      }).catch(function (err) { fail(err.message || String(err)); });
     } catch (err) {
       fail(err.message || String(err));
     }
@@ -120,7 +148,13 @@
     if (m.kind !== 'done' || m.generation !== generation) return;
     var layer = pending && pending.layer;
     if (!layer) return;
+    if (m.poolProblem) fail('erosion pool: ' + m.poolProblem + ' (running single threaded)');
+    lastPool = m.pool || 1;
+    window.__lastBreakdown = m.breakdown || null;
+    window.__lastHT = m.stats && m.stats.halftone ? m.stats.halftone : null;
+    if (window.__onResult) { var f = window.__onResult; window.__onResult = null; f(); }
     acceptResult(layer, m, m.stats, m.generation, m.ms);
+    armFullPass();
   }
 
   /* Turn engine output into things the canvas can draw. This is the only place
@@ -128,10 +162,12 @@
   function acceptResult(layer, out, stats, gen, ms) {
     if (gen !== generation) return;
     clearFail();
+    var tAccept = performance.now();
 
     var shapes = (out.items || []).map(function (it) {
       return {
-        d: it.d, path: new Path2D(it.d),
+        points: it.points, offsets: it.offsets, d: it.d,
+        paths: window.Geom.itemPaths(it),
         fill: it.fill, stroke: it.stroke, strokeWidth: it.strokeWidth || 0
       };
     });
@@ -141,7 +177,7 @@
       plates = out.plates.map(function (pl) {
         return {
           key: pl.key, label: pl.label, colour: pl.colour, dots: pl.dots,
-          path: viewport.platePath(pl, out.pattern, out.fuzziness, out.seed)
+          paths: viewport.platePaths(pl, out.pattern, out.fuzziness, out.seed)
         };
       });
     }
@@ -151,8 +187,15 @@
       pattern: out.pattern, fuzziness: out.fuzziness, seed: out.seed,
       bbox: out.bbox || layer.source.bbox
     };
+    window.__timing = window.__timing || {};
+    if (window.__timing) {
+      window.__timing.buildPaths = Math.round(performance.now() - tAccept);
+      window.__timing.workerMs = ms;
+    }
+    var tPaint = performance.now();
     showStats(stats, ms, shapes, plates);
     paint();
+    if (window.__timing) window.__timing.firstPaint = Math.round(performance.now() - tPaint);
   }
 
   function showStats(stats, ms, shapes, plates) {
@@ -169,6 +212,7 @@
     }
     if (s.dither) bits.push(fmtN(s.dither.shapes) + ' contours');
     if (ms !== undefined) bits.push(ms + 'ms');
+    if (lastPool > 1) bits.push(lastPool + ' threads');
     var box = $('stats');
     if (box) box.textContent = bits.join('  ·  ');
   }
@@ -187,7 +231,7 @@
         opacity: L.paint.opacity,
         shapes: r.plates ? null : r.shapes.map(function (sh) {
           return {
-            path: sh.path,
+            paths: sh.paths,
             fill: paintDef.useSource ? sh.fill : paintDef.fill,
             stroke: paintDef.useSource ? sh.stroke : paintDef.stroke,
             strokeWidth: paintDef.useSource ? sh.strokeWidth : paintDef.strokeWidth
@@ -407,7 +451,7 @@
         opacity: L.paint.opacity,
         shapes: r.plates ? [] : r.shapes.map(function (sh) {
           return {
-            d: sh.d,
+            d: window.Geom.itemPathData(sh),
             fill: pd.useSource ? sh.fill : pd.fill,
             stroke: pd.useSource ? sh.stroke : pd.stroke,
             strokeWidth: pd.useSource ? sh.strokeWidth : pd.strokeWidth

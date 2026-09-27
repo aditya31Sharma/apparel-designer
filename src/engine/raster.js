@@ -38,82 +38,82 @@
 
     var w = Math.max(4, Math.round(b.width * scale));
     var h = Math.max(4, Math.round(b.height * scale));
-    var c = canvasOf(w, h);
-    var g = c.getContext('2d', { willReadFrequently: true });
 
-    // White paper under everything, so transparent areas take no ink.
-    g.fillStyle = '#ffffff';
-    g.fillRect(0, 0, w, h);
-    g.save();
-    g.scale(scale, scale);
-    g.translate(-b.x, -b.y);
-
+    var data;
     if (input.pixels) {
-      // A photo arrives as raw pixels rather than an image element, because an
-      // HTMLImageElement cannot cross into a worker. Resample it into the frame.
-      g.restore();
-      drawPixels(g, input.pixels, w, h);
-      g.save();
-    } else if (input.bitmap) {
-      g.drawImage(input.bitmap, b.x, b.y, b.width, b.height);
+      /* Straight from the numbers. Routing a photo through a canvas only to
+       * read it back again cost a hundred and ninety milliseconds a frame:
+       * drawing puts the surface on the GPU and getImageData then has to stall
+       * the pipeline to drag it back. The pixels are already here, so resample
+       * them where they are and never touch a canvas. */
+      data = resample(input.pixels, w, h);
     } else {
-      input.items.forEach(function (it) {
-        var p = it.path2d || new Path2D(it.d);
-        if (it.fill && it.fill !== 'none') { g.fillStyle = it.fill; g.fill(p); }
-        else if (!it.stroke || it.stroke === 'none') { g.fillStyle = '#000000'; g.fill(p); }
-        if (it.stroke && it.stroke !== 'none' && it.strokeWidth > 0) {
-          g.strokeStyle = it.stroke; g.lineWidth = it.strokeWidth;
-          g.lineJoin = 'round'; g.lineCap = 'round';
-          g.stroke(p);
-        }
-      });
+      var c = canvasOf(w, h);
+      var g = c.getContext('2d', { willReadFrequently: true });
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, w, h);
+      g.save();
+      g.scale(scale, scale);
+      g.translate(-b.x, -b.y);
+      if (input.bitmap) {
+        g.drawImage(input.bitmap, b.x, b.y, b.width, b.height);
+      } else {
+        input.items.forEach(function (it) {
+          var p = root.Geom ? root.Geom.itemPath2D(it) : new Path2D(it.d);
+          if (it.fill && it.fill !== 'none') { g.fillStyle = it.fill; g.fill(p); }
+          else if (!it.stroke || it.stroke === 'none') { g.fillStyle = '#000000'; g.fill(p); }
+          if (it.stroke && it.stroke !== 'none' && it.strokeWidth > 0) {
+            g.strokeStyle = it.stroke; g.lineWidth = it.strokeWidth;
+            g.lineJoin = 'round'; g.lineCap = 'round';
+            g.stroke(p);
+          }
+        });
+      }
+      g.restore();
+      data = g.getImageData(0, 0, w, h).data;
     }
-    g.restore();
-
-    var img = g.getImageData(0, 0, w, h);
 
     // A matte from background removal knocks the background back to paper, so
     // the screen genuinely stops putting ink there.
-    if (input.matte) applyMatte(img.data, w, h, input.matte);
+    if (input.matte) applyMatte(data, w, h, input.matte);
 
-    return { data: img.data, w: w, h: h, scale: scale, x: b.x, y: b.y };
+    return { data: data, w: w, h: h, scale: scale, x: b.x, y: b.y };
   }
 
-  /* Box-filter the source down into the working bitmap. Nearest-neighbour would
-   * alias badly here: the screen averages each cell, so dropping samples on the
-   * way in shows up as moire in the dots. */
-  function drawPixels(g, px, w, h) {
+  /* Box-filter a photo down to the working size, compositing onto white so a
+   * transparent edge does not drag its colour in. Every source pixel is read
+   * exactly once, so the cost is the source size and nothing else. */
+  function resample(px, w, h) {
     var src = px.data, sw = px.w, sh = px.h;
-    var out = g.createImageData(w, h);
-    var dst = out.data;
-    var xr = sw / w, yr = sh / h;
-    for (var y = 0; y < h; y++) {
-      var y0 = (y * yr) | 0, y1 = Math.min(sh, Math.max(y0 + 1, ((y + 1) * yr) | 0));
-      for (var x = 0; x < w; x++) {
-        var x0 = (x * xr) | 0, x1 = Math.min(sw, Math.max(x0 + 1, ((x + 1) * xr) | 0));
-        var r = 0, gg = 0, b = 0, a = 0, n = 0;
-        for (var sy = y0; sy < y1; sy++) {
-          var row = sy * sw;
-          for (var sx = x0; sx < x1; sx++) {
-            var i = (row + sx) * 4;
-            var al = src[i + 3] / 255;
-            // Premultiply, so a transparent edge does not drag its colour in.
-            r += src[i] * al; gg += src[i + 1] * al; b += src[i + 2] * al;
-            a += src[i + 3]; n++;
-          }
-        }
-        var o = (y * w + x) * 4;
-        var am = (a / n) / 255;
-        dst[o] = am > 0 ? r / n / am : 255;
-        dst[o + 1] = am > 0 ? gg / n / am : 255;
-        dst[o + 2] = am > 0 ? b / n / am : 255;
-        dst[o + 3] = a / n;
+    var out = new Uint8ClampedArray(w * h * 4);
+    var acc = new Float32Array(w * h * 4);
+    var cnt = new Uint32Array(w * h);
+
+    var xs = w / sw, ys = h / sh;
+    for (var sy = 0; sy < sh; sy++) {
+      var dy = (sy * ys) | 0;
+      if (dy >= h) dy = h - 1;
+      var srow = sy * sw * 4, drow = dy * w;
+      for (var sx = 0; sx < sw; sx++) {
+        var dx = (sx * xs) | 0;
+        if (dx >= w) dx = w - 1;
+        var si = srow + sx * 4, di = (drow + dx) * 4;
+        var a = src[si + 3] / 255;
+        acc[di] += src[si] * a + 255 * (1 - a);
+        acc[di + 1] += src[si + 1] * a + 255 * (1 - a);
+        acc[di + 2] += src[si + 2] * a + 255 * (1 - a);
+        cnt[drow + dx]++;
       }
     }
-    // Composite over the white paper already on the canvas.
-    var tmp = canvasOf(w, h);
-    tmp.getContext('2d').putImageData(out, 0, 0);
-    g.drawImage(tmp, 0, 0);
+    for (var i = 0, n = w * h; i < n; i++) {
+      var k = cnt[i] || 1;
+      var o = i * 4;
+      out[o] = acc[o] / k;
+      out[o + 1] = acc[o + 1] / k;
+      out[o + 2] = acc[o + 2] / k;
+      out[o + 3] = 255;
+    }
+    return out;
   }
 
   /* The matte is stored at its own resolution; sample it nearest-neighbour. */
@@ -162,21 +162,26 @@
   /* A photo into outlines, so the erosion has something with an edge to chew.
    * Split into tone bands, threshold each, trace with the same marching-squares
    * pass the dither already uses. */
+  /* Tracing a photo into outlines depends only on the photo and the two tone
+   * controls, not on anything the dither does, so doing it again on every
+   * slider tick was costing thirty-odd milliseconds of every preview for a
+   * result that had not changed. */
+  var traceCache = { key: null, items: null };
+
   function traceImage(input, p) {
     var px = input.pixels;
     if (!px) return input.items;
+
+    var key = [input.sourceId || 'x', px.w, px.h, p.imageCut, p.imageLevels,
+               input.matte ? input.matte.w + 'x' + input.matte.h : 'none'].join('|');
+    if (traceCache.key === key) return traceCache.items;
     var G = root.Grunge;
     if (!G || !G.traceRings) return input.items;
 
     var maxPx = 1400;
     var sc = Math.min(1, maxPx / Math.max(px.w, px.h));
     var w = Math.max(8, Math.round(px.w * sc)), h = Math.max(8, Math.round(px.h * sc));
-    var c = canvasOf(w, h);
-    var g = c.getContext('2d', { willReadFrequently: true });
-    g.fillStyle = '#ffffff';
-    g.fillRect(0, 0, w, h);
-    drawPixels(g, px, w, h);
-    var data = g.getImageData(0, 0, w, h).data;
+    var data = resample(px, w, h);
 
     if (input.matte) applyMatte(data, w, h, input.matte);
 
@@ -210,7 +215,10 @@
       items.push({ d: scalePath(d, kx, ky, b.x, b.y), fill: '#000000',
                    stroke: 'none', strokeWidth: 0 });
     }
-    return items.length ? items : input.items;
+    var result = items.length ? items : input.items;
+    traceCache.key = key;
+    traceCache.items = result;
+    return result;
   }
 
   function scalePath(d, kx, ky, ox, oy) {
@@ -224,7 +232,7 @@
     traceImage: traceImage,
     canvasOf: canvasOf,
     rasterize: rasterize,
-    drawPixels: drawPixels,
+    resample: resample,
     applyMatte: applyMatte,
     levelsFromBitmap: levelsFromBitmap
   };

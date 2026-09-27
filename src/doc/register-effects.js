@@ -7,6 +7,10 @@
   'use strict';
 
   var E = root.Effects, W = root.Warp, G = root.Grunge, H = root.Halftone;
+  var Geom = root.Geom;
+  var now = function () {
+    return (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  };
 
   /* ---------- warp ---------- */
 
@@ -28,9 +32,12 @@
       };
       var items = [], n = 0;
       input.items.forEach(function (it) {
-        var parts = W.warp([it.d], input.bbox, opts);
+        var parts = W.warp([Geom.itemPathData(it)], input.bbox, opts);
         if (!parts.length) return;
-        items.push(Object.assign({}, it, { d: parts.join(' ') }));
+        items.push({
+          d: parts.join(' '), fill: it.fill, stroke: it.stroke,
+          strokeWidth: it.strokeWidth
+        });
         n++;
       });
       if (!items.length) return null;
@@ -79,28 +86,49 @@
         texture: p.texture, textureAmount: p.textureAmount,
         textureScale: p.textureScale * s, textureInvert: p.textureInvert,
         textureImage: ctx.textureImage || null,
+        // Interpolating the texture field costs about a third of the fine
+        // speckle, which is invisible in a reduced-resolution preview and not
+        // acceptable in the version that gets exported.
+        textureStep: (ctx.quality === undefined || ctx.quality >= 1) ? 0 : 0.6,
+        noPool: !!ctx.noPool,
         meltRadius: p.meltRadius * s, meltCut: p.meltCut,
         detail: p.detail, minArea: 2.2, smooth: 1, seed: p.seed,
         pxPerUnit: p.pxPerUnit * (ctx.quality === undefined ? 1 : ctx.quality)
       };
       var out = [], kept = 0, points = 0;
-      items.forEach(function (it) {
-        var bb = W.bounds([it.d]);
-        if (!bb.width || !bb.height) return;
-        // Keep the working bitmap sane however far Detail is pushed.
-        var px = Math.min(o.pxPerUnit, 2600 / Math.max(bb.width, bb.height));
-        var r = G.fromPaths([it.d], bb, Object.assign({}, o, { pxPerUnit: px }));
-        if (!r.d) return;
-        kept += r.stats.kept; points += r.stats.points;
-        out.push(Object.assign({}, it, { d: r.d }));
-      });
-      if (!out.length) return null;
-      return {
-        items: out,
-        bbox: W.bounds(out.map(function (i) { return i.d; })),
-        matte: input.matte,
-        stats: { shapes: kept, points: points }
+      // erodePaths is supplied by whoever runs the stack: a pool of workers
+      // inside the worker, or the plain single-threaded call on the main
+      // thread. Either way it hands back the same numbers.
+      var erode = ctx.erodePaths || function (d, bb, opt) {
+        return Promise.resolve(G.fromPaths([d], bb, opt));
       };
+
+      return items.reduce(function (chain, it) {
+        return chain.then(function () {
+          var bb = Geom.itemBounds(it);
+          if (!bb.width || !bb.height) return;
+          // Keep the working bitmap sane however far Detail is pushed.
+          var px = Math.min(o.pxPerUnit, 2600 / Math.max(bb.width, bb.height));
+          return erode(Geom.itemPathData(it), bb,
+            Object.assign({}, o, { pxPerUnit: px })).then(function (r) {
+            if (!r || !r.points || !r.points.length) return;
+            kept += r.stats.kept; points += r.stats.points;
+            // Outlines leave as numbers. The string is built only on export.
+            out.push({
+              points: r.points, offsets: r.offsets,
+              fill: it.fill, stroke: it.stroke, strokeWidth: it.strokeWidth
+            });
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        if (!out.length) return null;
+        return {
+          items: out,
+          bbox: Geom.unionBounds(out),
+          matte: input.matte,
+          stats: { shapes: kept, points: points }
+        };
+      });
     }
   });
 
@@ -138,12 +166,27 @@
       // Halftone needs pixels. An imported bitmap gives them directly; vector
       // artwork gets rendered once, at a resolution tied to the screen pitch so
       // each cell still has something to average over.
+      var tR = now();
       var px = ctx.rasterize(input, p, ctx);
       if (!px || !px.w || !px.h) return null;
+      var msRaster = Math.round(now() - tR);
 
+      var tS = now();
       var channels = channelsFor(p);
+
+      /* A reduced-quality preview has to reduce the number of dots, not just
+       * how finely the picture is sampled. The dot count is what the outlines
+       * and the drawing both scale with, and it does not fall when the sampling
+       * does. Frequency scales as the square root because dots go as its
+       * square, so a 42% pass really is about 42% of the work. Full quality
+       * follows the moment the slider is let go. */
+      var freq = p.frequency;
+      if (ctx.quality !== undefined && ctx.quality < 1) {
+        freq = Math.max(10, Math.round(p.frequency * Math.sqrt(ctx.quality)));
+      }
+
       var res = H.screen(px.data, px.w, px.h, {
-        frequency: p.frequency, pattern: p.pattern, inkDensity: p.inkDensity,
+        frequency: freq, pattern: p.pattern, inkDensity: p.inkDensity,
         dotGain: p.dotGain, roughness: p.roughness, fuzziness: p.fuzziness,
         paperFibre: p.paperFibre, inkTexture: p.inkTexture,
         gcr: p.mode === 'mono' ? 1 : p.gcr,
@@ -151,7 +194,10 @@
         angles: p.angles, channels: channels
       });
 
+      var msScreen = Math.round(now() - tS);
+
       // Dots come back in bitmap pixels; put them back into artwork units.
+      var tM = now();
       var k = 1 / px.scale;
       var plates = res.channels.map(function (ch) {
         var d = ch.dots, out = new Float32Array(d.length);
@@ -174,7 +220,9 @@
         bbox: input.bbox,
         matte: input.matte,
         stats: { dots: res.stats.dots, plates: plates.length,
-                 pitch: res.stats.spacing * k }
+                 pitch: res.stats.spacing * k,
+                 raster: msRaster, screen: msScreen,
+                 map: Math.round(now() - tM), bitmap: px.w + 'x' + px.h }
       };
     }
   });
