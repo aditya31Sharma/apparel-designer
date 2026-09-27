@@ -391,6 +391,20 @@ const SCRIPT = `(async function(){
   var beforeSvg = window.App.svgText(false);
   var beforeDots = window.__lastHT ? window.__lastHT.dots : 0;
   check('halftone export is not empty', beforeSvg.length > 1000, beforeSvg.length + ' bytes');
+
+  /* The size shown before you press Save has to be close, and never low: a file
+   * that turns out bigger than advertised is the surprise worth avoiding. */
+  (function(){
+    var shown = document.getElementById('exportSize').textContent.replace('~','');
+    var est = /MB/.test(shown) ? parseFloat(shown) * 1048576 : parseFloat(shown) * 1024;
+    // The readout exists to stop a big export being a surprise, so the rule is
+    // never low, and close where closeness matters. A coarse screen is a small
+    // file and a generous figure there costs nobody anything.
+    var slack = beforeSvg.length > 4 * 1048576 ? 1.15 : 1.6;
+    check('export estimate is never low, and close on a large file',
+      est >= beforeSvg.length * 0.98 && est < beforeSvg.length * slack,
+      shown + ' shown for ' + Math.round(beforeSvg.length / 1024) + 'KB');
+  })();
   check('halftone export size is sane for the dot count',
     beforeSvg.length < beforeDots * 140,
     Math.round(beforeSvg.length/1024) + 'KB for ' + beforeDots + ' dots');

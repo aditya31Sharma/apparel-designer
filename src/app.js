@@ -170,6 +170,7 @@
         acceptResult(layer, run.result, run.stats, job.generation,
           Math.round(performance.now() - t0));
         armFullPass();
+        if (window.__onResult) { var g = window.__onResult; window.__onResult = null; g(); }
       }).catch(function (err) { fail(err.message || String(err)); });
     } catch (err) {
       fail(err.message || String(err));
@@ -189,9 +190,12 @@
     window.__lastBreakdown = m.breakdown || null;
     window.__lastHT = m.stats && m.stats.halftone ? m.stats.halftone : null;
     window.__lastStats = m.stats || null;
-    if (window.__onResult) { var f = window.__onResult; window.__onResult = null; f(); }
     acceptResult(layer, m, m.stats, m.generation, m.ms);
     armFullPass();
+    // Signalled last, once the scene and the readouts are actually updated.
+    // Firing it first meant a harness read the previous render's numbers and
+    // every measurement came out one step behind.
+    if (window.__onResult) { var f = window.__onResult; window.__onResult = null; f(); }
   }
 
   /* Turn engine output into things the canvas can draw. This is the only place
@@ -228,12 +232,36 @@
     window.__timing.buildPaths = Math.round(performance.now() - tAccept);
     window.__timing.workerMs = ms;
     var tPaint = performance.now();
-    showStats(stats, ms, shapes, plates);
+    showStats(stats, ms, shapes, plates, out.pattern);
     paint();
     window.__timing.firstPaint = Math.round(performance.now() - tPaint);
   }
 
-  function showStats(stats, ms, shapes, plates) {
+  /* Roughly how big the SVG will be, without building it.
+   *
+   * A fine screen over a large photo is half a million dots and twenty-odd
+   * megabytes. That is a fair file for that much geometry, but finding out by
+   * pressing Save is not fair, so the number is on screen beforehand. */
+  function estimateBytes(shapes, plates, pattern) {
+    var bytes = 260;
+    if (plates) {
+      // Calibrated against real exports, rounded up: a figure that surprises
+      // you by being low is worse than one that is a little cautious.
+      var per = pattern === 'round' ? 62 : pattern === 'cross' ? 142 : 78;
+      plates.forEach(function (p) { bytes += (p.dots.length / H.STRIDE) * per; });
+    }
+    (shapes || []).forEach(function (sh) {
+      bytes += sh.points ? sh.points.length * 7.5 : (sh.d ? sh.d.length : 0);
+    });
+    return bytes;
+  }
+
+  function fmtBytes(b) {
+    if (b > 1048576) return (b / 1048576).toFixed(b > 10485760 ? 0 : 1) + 'MB';
+    return Math.max(1, Math.round(b / 1024)) + 'KB';
+  }
+
+  function showStats(stats, ms, shapes, plates, pattern) {
     var bits = [];
     if (plates) {
       var n = 0;
@@ -248,8 +276,15 @@
     if (s.dither) bits.push(fmtN(s.dither.shapes) + ' contours');
     if (ms !== undefined) bits.push(ms + 'ms');
     if (lastPool > 1) bits.push(lastPool + ' threads');
+
+    var est = estimateBytes(shapes, plates, pattern);
     var box = $('stats');
     if (box) box.textContent = bits.join('  ·  ');
+    var size = $('exportSize');
+    if (size) {
+      size.textContent = (shapes && shapes.length) || plates ? '~' + fmtBytes(est) : '';
+      size.classList.toggle('heavy', est > 8 * 1048576);
+    }
   }
   function fmtN(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 

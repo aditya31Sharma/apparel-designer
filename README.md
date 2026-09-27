@@ -59,6 +59,18 @@ opens four objects rather than a hundred thousand. `Plates` writes each ink as i
 own named group, unblended, which is what a printer asks for. The suite opens every
 export back up again, because an export you cannot reopen is not an export.
 
+The Save button carries the file size before you press it, and turns amber past
+8MB. A fine screen over a large photo is half a million dots and thirteen
+megabytes: a fair file for that much geometry, but finding out by pressing Save
+is not fair.
+
+**Mono and duotone work from perceptual tone, not from the black plate.** Black
+generation is `1 - max(r,g,b)`, so a saturated colour contains no black at all
+and a red logo came out of a one-colour screen as blank paper. Duotone gives the
+colour the whole tone range and eases the dark ink in past an adjustable split,
+so the two overprint in the shadows the way a risograph does, instead of being
+mono with a tint.
+
 ## Background removal
 
 BiRefNet-lite through `onnxruntime-node`, locally. MIT licensed, which matters
@@ -121,8 +133,21 @@ why the desktop build serves itself from a loopback HTTP server rather than from
   moment the working bitmap is larger: untouched destination pixels stayed black,
   which screened empty transparent space at about 50%.
 
-Measured at 30,000 dots on screen: 60fps sustained while panning and zooming at
-Retina density, one frame of settle.
+Measured at Retina density on a 1080px photo:
+
+| | |
+|---|---|
+| Halftone slider | 8ms |
+| Dither slider | 77ms |
+| Halftone, full quality | 63-90ms |
+| Eroded photo, full quality | 530-600ms |
+| Pan, 95th percentile frame | 17.7ms, which is vsync |
+| Heap over 25 recomputes | flat |
+
+A worker that stops answering is caught after twenty seconds: the app says so,
+throws it away, starts a fresh one and retries, and falls back to the main
+thread if that keeps happening. A frozen canvas with no explanation reads as the
+whole app having hung, which is the worst way to fail.
 
 ## Trackpad
 

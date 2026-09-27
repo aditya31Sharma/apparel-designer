@@ -193,6 +193,8 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
 .foot button svg{width:14px;height:14px}
 .foot button:hover{background:#464646}
 .foot button.pri{background:var(--accent);color:#fff}
+.sz{font-size:10px;opacity:.75;font-variant-numeric:tabular-nums;font-weight:400}
+.sz.heavy{color:#ffd48a;opacity:1}
 .foot button.pri:hover{background:#2aa5ff}
 
 /* ---------- tooltip ---------- */
