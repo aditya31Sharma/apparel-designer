@@ -273,6 +273,170 @@
   G.ringsToPath = ringsToPath;
 })(typeof module !== 'undefined' ? module.exports : window);
 
+/* ---------- textures ---------- */
+/* Photoshop clips a stack of grunge scans over the letterform and the dark
+ * parts knock the ink out. These fields do the same job procedurally: each one
+ * returns 0..1 over the mask, and anything above the cutoff loses its ink.
+ * Coordinates arrive already divided by the texture scale, so x and y are in
+ * texture cells, not pixels. */
+(function (root) {
+  'use strict';
+  var G = root.Grunge;
+
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+  function stretch(v, k) { return clamp01((v - 0.5) * k + 0.5); }
+  function smoothstep(a, b, x) {
+    var t = clamp01((x - a) / (b - a));
+    return t * t * (3 - 2 * t);
+  }
+
+  /* Ridged noise: fold the noise about its midpoint so the creases become
+   * sharp veins instead of smooth lobes. Cracks and stone need that fold. */
+  function ridged(n, x, y, oct) {
+    var s = 0, amp = 1, norm = 0, f = 1;
+    for (var o = 0; o < oct; o++) {
+      var v = 1 - Math.abs(n(x * f, y * f) * 2 - 1);
+      s += amp * v * v; norm += amp; amp *= 0.55; f *= 2.07;
+    }
+    return s / norm;
+  }
+
+  var TEXTURES = {
+    rough: function (N, x, y) {
+      return smoothstep(0.3, 0.8, G.fbm(N.a, x, y, 4, 0.52, 2.03));
+    },
+    crust: function (N, x, y) {
+      var big = G.fbm(N.a, x * 0.35, y * 0.35, 2, 0.5, 2);
+      var fine = G.fbm(N.b, x * 1.7, y * 1.7, 3, 0.5, 2.11);
+      return stretch(big * 0.65 + fine * 0.35, 3.4);
+    },
+    speckle: function (N, x, y) {
+      return stretch(G.fbm(N.b, x * 2.6, y * 2.6, 2, 0.45, 2.3), 2.6);
+    },
+    crack: function (N, x, y) {
+      return ridged(N.a, x * 0.6, y * 0.6, 3);
+    },
+    scan: function (N, x, y) {
+      var band = G.fbm(N.a, x * 0.12, y * 5.5, 2, 0.5, 2);
+      var drift = G.fbm(N.b, x * 0.25, y * 0.25, 2, 0.5, 2);
+      return stretch(band * 0.75 + drift * 0.25, 2.8);
+    },
+    fibre: function (N, x, y) {
+      var u = x * 0.94 + y * 0.34, v = -x * 0.34 + y * 0.94;
+      return stretch(G.fbm(N.a, u * 0.16, v * 3.4, 3, 0.5, 2.05), 2.4);
+    },
+    concrete: function (N, x, y) {
+      var a = G.fbm(N.a, x * 0.5, y * 0.5, 3, 0.55, 2);
+      var r = ridged(N.b, x * 1.2, y * 1.2, 2);
+      return stretch(a * 0.55 + r * 0.45, 2.2);
+    },
+    halftone: function (N, x, y) {
+      // 15 degree screen, the angle offset print uses to hide the grid
+      var rx = x * 0.966 + y * 0.259, ry = -x * 0.259 + y * 0.966;
+      var cx = Math.round(rx), cy = Math.round(ry);
+      var dx = rx - cx, dy = ry - cy;
+      var d = Math.sqrt(dx * dx + dy * dy) * 2;
+      var r = 0.42 + 0.52 * G.fbm(N.a, cx * 0.4, cy * 0.4, 2, 0.5, 2);
+      return 1 - smoothstep(r - 0.3, r + 0.75, d);
+    },
+    spray: function (N, x, y) {
+      var cluster = G.fbm(N.b, x * 0.22, y * 0.22, 2, 0.5, 2);
+      var dots = G.fbm(N.a, x * 2.1, y * 2.1, 1, 0.5, 2);
+      return stretch(dots * (0.45 + 0.9 * cluster), 2.0);
+    }
+  };
+
+  /* Every field has its own value distribution, so a fixed cutoff would mean
+   * something different for each one. Sample the field over the mask, sort,
+   * and take the cut at the quantile the user asked for. Then "amount" always
+   * means the same thing: the share of the shape the texture eats. */
+  /* A posterised texture (a hard black-and-white scan, a two-tone export) puts
+   * huge mass on a single value, so a quantile cut lands on a tie and either
+   * takes all of it or none. A tiny deterministic jitter spreads each tie into
+   * a band, and since calibration sees the same jittered field the cut then
+   * splits that band in the right proportion. */
+  function dither(field) {
+    return function (x, y) {
+      var h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      return field(x, y) + 0.004 * (h - Math.floor(h));
+    };
+  }
+
+  function calibrate(field, w, h, amount) {
+    if (amount >= 1) return -Infinity;
+    if (amount <= 0) return Infinity;
+    var n = 64;
+    var vals = new Float64Array(n * n);
+    for (var j = 0, k = 0; j < n; j++) {
+      for (var i = 0; i < n; i++, k++) {
+        vals[k] = field((i + 0.5) * w / n, (j + 0.5) * h / n);
+      }
+    }
+    vals.sort();
+    var idx = Math.floor((1 - amount) * (vals.length - 1));
+    return vals[idx];
+  }
+
+  G.calibrate = calibrate;
+  G.dither = dither;
+  G.TEXTURES = TEXTURES;
+  G.TEXTURE_NAMES = Object.keys(TEXTURES);
+  G.stretch = stretch;
+  G.smoothstep = smoothstep;
+  G.ridged = ridged;
+})(typeof module !== 'undefined' ? module.exports : window);
+
+/* ---------- blur then threshold ---------- */
+/* The melt pass. Blurring coverage and re-cutting at a level is the vector
+ * equivalent of Photoshop's gaussian-then-levels trick: small specks dissolve,
+ * near neighbours fuse, and the outline goes soft and organic. Three box
+ * passes approximate a gaussian closely enough and stay O(n). */
+(function (root) {
+  'use strict';
+  var G = root.Grunge;
+
+  function boxH(src, dst, w, h, r) {
+    var iarr = 1 / (r + r + 1);
+    for (var y = 0; y < h; y++) {
+      var ti = y * w, li = ti, ri = ti + r;
+      var fv = src[ti], lv = src[ti + w - 1], val = (r + 1) * fv;
+      for (var j = 0; j < r; j++) val += src[ti + j];
+      for (j = 0; j <= r; j++) { val += src[ri++] - fv; dst[ti++] = val * iarr; }
+      for (j = r + 1; j < w - r; j++) { val += src[ri++] - src[li++]; dst[ti++] = val * iarr; }
+      for (j = w - r; j < w; j++) { val += lv - src[li++]; dst[ti++] = val * iarr; }
+    }
+  }
+
+  function boxV(src, dst, w, h, r) {
+    var iarr = 1 / (r + r + 1);
+    for (var x = 0; x < w; x++) {
+      var ti = x, li = ti, ri = ti + r * w;
+      var fv = src[ti], lv = src[ti + w * (h - 1)], val = (r + 1) * fv;
+      for (var j = 0; j < r; j++) val += src[ti + j * w];
+      for (j = 0; j <= r; j++) { val += src[ri] - fv; dst[ti] = val * iarr; ri += w; ti += w; }
+      for (j = r + 1; j < h - r; j++) {
+        val += src[ri] - src[li]; dst[ti] = val * iarr; li += w; ri += w; ti += w;
+      }
+      for (j = h - r; j < h; j++) { val += lv - src[li]; dst[ti] = val * iarr; li += w; ti += w; }
+    }
+  }
+
+  function melt(mask, w, h, radius, cut) {
+    var r = Math.round(radius);
+    var lim = Math.floor((Math.min(w, h) - 1) / 2);
+    if (r < 1 || lim < 1) return mask;
+    if (r > lim) r = lim;
+    var a = new Float32Array(w * h), b = new Float32Array(w * h);
+    for (var i = 0; i < w * h; i++) a[i] = mask[i] ? 1 : 0;
+    for (var pass = 0; pass < 3; pass++) { boxH(a, b, w, h, r); boxV(b, a, w, h, r); }
+    var out = new Uint8Array(w * h);
+    for (i = 0; i < w * h; i++) out[i] = a[i] > cut ? 1 : 0;
+    return out;
+  }
+
+  G.melt = melt;
+})(typeof module !== 'undefined' ? module.exports : window);
+
 /* ---------- the effect ---------- */
 (function (root) {
   'use strict';
@@ -290,6 +454,22 @@
     spatterRange: 7,   // px they carry
     pit: 0.12,         // holes opened up inside the strokes
     pitDepth: 6,       // how far inside pitting reaches
+
+    // spread: the stacked drop shadows, as geometry
+    spread: 0,         // px the ink pushes out past the original edge
+    spreadDensity: 0.55, // 1 = a solid fatter shape, 0 = a thin halo of droplets
+
+    // texture: the clipped grunge layer
+    texture: 'none',   // a key of Grunge.TEXTURES, or 'image'
+    textureAmount: 0,  // 0..1, how much of the field knocks ink out
+    textureScale: 3,   // px per texture cell
+    textureInvert: false,
+    textureImage: null,// { data: Float32Array 0..1, w, h } when texture is 'image'
+
+    // melt: blur the coverage and re-cut it
+    meltRadius: 0,     // px of blur
+    meltCut: 0.5,      // level the blurred coverage is cut at
+
     detail: 0.6,       // simplification tolerance in px
     smooth: 1,         // chaikin passes
     minArea: 1.5,      // drop specks smaller than this, in px^2
@@ -312,46 +492,102 @@
     var nBlotch = G.makeNoise(p.seed + 977);
     var nSpat = G.makeNoise(p.seed + 5501);
     var nPit = G.makeNoise(p.seed + 1289);
+    var nSpread = G.makeNoise(p.seed + 2213);
+    var texN = { a: G.makeNoise(p.seed + 3307), b: G.makeNoise(p.seed + 7717) };
 
     var gs = 1 / Math.max(0.4, p.grain);
+    var sgs = 1 / Math.max(0.4, p.grain * 1.25);
     var bs = 1 / Math.max(4, p.blotch);
+    var ts = 1 / Math.max(0.4, p.textureScale);
     var out = new Uint8Array(w * h);
+
+    // texture sampler, resolved once so the pixel loop stays a straight line
+    var texField = null;
+    if (p.textureAmount > 0) {
+      if (p.texture === 'image' && p.textureImage) {
+        var im = p.textureImage;
+        // cover the whole mask, then let scale zoom in and tile past the edges
+        var zoom = Math.max(0.05, 3 / Math.max(0.4, p.textureScale));
+        texField = function (x, y) {
+          var u = (x / w - 0.5) * zoom + 0.5, v = (y / h - 0.5) * zoom + 0.5;
+          u -= Math.floor(u); v -= Math.floor(v);
+          var ix = (u * im.w) | 0, iy = (v * im.h) | 0;
+          if (ix >= im.w) ix = im.w - 1;
+          if (iy >= im.h) iy = im.h - 1;
+          var lv = im.data[iy * im.w + ix];
+          return p.textureInvert ? 1 - lv : lv;
+        };
+      } else if (G.TEXTURES[p.texture]) {
+        var fn = G.TEXTURES[p.texture];
+        texField = p.textureInvert
+          ? function (x, y) { return 1 - fn(texN, x * ts, y * ts); }
+          : function (x, y) { return fn(texN, x * ts, y * ts); };
+      }
+    }
+    if (texField) texField = G.dither(texField);
+    var texCut = texField ? G.calibrate(texField, w, h, p.textureAmount) : Infinity;
+
+    // How far from the edge anything can still change. Past that the answer is
+    // settled and the noise work is skipped.
+    var wander = p.roughness * (1 + p.blotchAmount) + p.spread + 2;
+    var reachOut = wander + p.spatterRange;
+    var reachIn = Math.max(wander, p.pit > 0 ? p.pitDepth : 0);
+    var skipCore = !texField;
 
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var i = y * w + x;
         var dist = d[i];
 
-        // Anything far from the edge is settled; skip the noise work.
-        var reach = p.roughness * (1 + p.blotchAmount) + p.spatterRange + 2;
-        if (dist > reach && p.pit <= 0) { out[i] = 1; continue; }
-        if (dist < -reach) { out[i] = 0; continue; }
+        if (dist > reachIn && skipCore) { out[i] = 1; continue; }
+        if (dist < -reachOut) { out[i] = 0; continue; }
 
-        // Slow field decides which regions erode hard and which survive.
-        var blot = G.fbm(nBlotch, x * bs, y * bs, 3, 0.55, 2);
-        var amp = p.roughness * (1 - p.blotchAmount + 2 * p.blotchAmount * blot);
+        var inside;
+        if (dist > reachIn) {
+          inside = true;                       // deep core, only texture can cut it
+        } else {
+          // Slow field decides which regions erode hard and which survive.
+          var blot = G.fbm(nBlotch, x * bs, y * bs, 3, 0.55, 2);
+          var amp = p.roughness * (1 - p.blotchAmount + 2 * p.blotchAmount * blot);
 
-        var n = G.fbm(nGrain, x * gs, y * gs, p.octaves, 0.5, 2.03);
-        var moved = dist + amp * (n * 2 - 1) + p.bias;
-        var inside = moved > 0;
+          var n = G.fbm(nGrain, x * gs, y * gs, p.octaves, 0.5, 2.03);
+          var moved = dist + p.spread + amp * (n * 2 - 1) + p.bias;
+          inside = moved > 0;
 
-        // Specks thrown clear of the edge, thinning out with distance.
-        if (!inside && p.spatter > 0 && dist > -p.spatterRange && dist < 1) {
-          var falloff = 1 - Math.min(1, -Math.min(0, dist) / p.spatterRange);
-          var s = G.fbm(nSpat, x * gs * 1.9 + 31.7, y * gs * 1.9 - 12.3, 2, 0.5, 2);
-          if (s > 1 - p.spatter * falloff * falloff * 0.6) inside = true;
+          // The grown band dissolves with distance, so spread reads as spray
+          // rather than as a fatter letter with a clean edge.
+          if (inside && p.spread > 0 && dist < 0) {
+            var t = Math.min(1, -dist / p.spread);
+            var keep = Math.pow(1 - t, 0.55 + (1 - p.spreadDensity) * 3.2);
+            var sp = G.stretch(G.fbm(nSpread, x * sgs + 61.3, y * sgs - 24.7, 3, 0.5, 2.11), 2.2);
+            if (sp > keep) inside = false;
+          }
+
+          // Specks thrown clear of the edge, thinning out with distance.
+          if (!inside && p.spatter > 0 && dist > -p.spatterRange && dist < 1) {
+            var falloff = 1 - Math.min(1, -Math.min(0, dist) / p.spatterRange);
+            var sv = G.fbm(nSpat, x * gs * 1.9 + 31.7, y * gs * 1.9 - 12.3, 2, 0.5, 2);
+            if (sv > 1 - p.spatter * falloff * falloff * 0.6) inside = true;
+          }
+
+          // Pits opened inside the strokes, following the same slow field.
+          if (inside && p.pit > 0 && dist < p.pitDepth) {
+            var pf = 1 - dist / p.pitDepth;
+            var q = G.fbm(nPit, x * gs * 1.35 - 77.1, y * gs * 1.35 + 5.9, 3, 0.5, 2);
+            if (q > 1 - p.pit * pf * blot) inside = false;
+          }
         }
 
-        // Pits opened inside the strokes, following the same slow field.
-        if (inside && p.pit > 0 && dist < p.pitDepth) {
-          var pf = 1 - dist / p.pitDepth;
-          var q = G.fbm(nPit, x * gs * 1.35 - 77.1, y * gs * 1.35 + 5.9, 3, 0.5, 2);
-          if (q > 1 - p.pit * pf * blot) inside = false;
+        // The clipped grunge layer, applied over everything that survived.
+        if (inside && texField) {
+          if (texField(x, y) > texCut) inside = false;
         }
 
         out[i] = inside ? 1 : 0;
       }
     }
+
+    if (p.meltRadius > 0) out = G.melt(out, w, h, p.meltRadius, p.meltCut);
 
     var rings = G.traceRings(out, w, h);
     var kept = [];
@@ -440,7 +676,8 @@
     var o = options || {};
     var px = o.pxPerUnit || 2;
     var pad = Math.ceil((o.roughness || G.DEFAULTS.roughness) +
-                        (o.spatterRange || G.DEFAULTS.spatterRange) + 6);
+                        (o.spatterRange || G.DEFAULTS.spatterRange) +
+                        (o.spread || 0) + (o.meltRadius || 0) * 3 + 6);
     var R = maskFromPaths(paths, bbox, px, pad);
     var res = G.erode(R.mask, R.w, R.h, o);
     var d = G.ringsToPath(res.rings, {

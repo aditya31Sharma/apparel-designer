@@ -58,6 +58,13 @@
       <!-- source -->
       <div class="sec">
         <h2>Source</h2>
+        <div class="pr">
+          <button class="wide" id="openSvg" data-icon="open"
+            data-tip="Import SVG|Open an .svg file. Images work too and get traced"><span>Import SVG</span></button>
+          <button class="tbtn" id="pasteSvg" data-icon="paste"
+            data-tip="Paste SVG|Paste markup from the clipboard, or press Cmd V anywhere"></button>
+        </div>
+        <div class="note">Or drop a file on the canvas.</div>
         <div class="chips" id="samples"></div>
         <div class="pr" id="imgRow" style="display:none">
           <span class="gi" data-icon="tone" data-tip="Tones|How many grey bands the image is split into before tracing"></span>
@@ -161,6 +168,12 @@
 
         <div id="gControls" style="display:none">
           <div class="sec">
+            <h2><span class="gi" data-icon="styleLib"></span><span>Style</span></h2>
+            <div class="grid tiles" id="gPresets"></div>
+          </div>
+
+          <div class="sec">
+            <h2>Edge</h2>
             <div class="pr">
               <span class="gi" data-icon="grain" data-tip="Grain|Size of the speckle. Small is a fine spray, large tears in chunks"></span>
               <input type="range" id="gGrain" min="6" max="70" value="16">
@@ -190,6 +203,71 @@
               <span class="gi" data-icon="pits" data-tip="Pits|Holes opened up inside the strokes"></span>
               <input type="range" id="gPit" min="0" max="45" value="14">
               <input class="num" type="text" id="gPitVal" value="14" readonly>
+            </div>
+          </div>
+
+          <div class="sec">
+            <h2><span class="gi" data-icon="spread"></span><span>Spread</span></h2>
+            <div class="note">Ink pushed out past the edge, dissolving as it goes.
+              The stacked drop shadows, as real geometry.</div>
+            <div class="pr">
+              <span class="gi" data-icon="spread" data-tip="Spread|How far the ink carries past the original edge, in pixels"></span>
+              <input type="range" id="gSpread" min="0" max="250" value="0">
+              <input class="num" type="text" id="gSpreadVal" value="0.0" readonly>
+            </div>
+            <div class="pr">
+              <span class="gi" data-icon="density" data-tip="Density|Solid at the top, a thin haze of droplets at the bottom"></span>
+              <input type="range" id="gSpreadD" min="0" max="100" value="55">
+              <input class="num" type="text" id="gSpreadDVal" value="55" readonly>
+            </div>
+          </div>
+
+          <div class="sec">
+            <h2><span class="gi" data-icon="texture"></span><span>Texture</span></h2>
+            <div class="note">A grunge field clipped inside the shape, knocking
+              out ink. Every swatch is the real field.</div>
+            <div class="grid tiles" id="gTextures"></div>
+            <div class="pr">
+              <span class="gi" data-icon="texAmt" data-tip="Amount|Share of the shape the texture eats away"></span>
+              <input type="range" id="gTexAmt" min="0" max="100" value="0">
+              <input class="num" type="text" id="gTexAmtVal" value="0" readonly>
+            </div>
+            <div class="pr">
+              <span class="gi" data-icon="texScale" data-tip="Texture scale|Size of the texture features, in pixels"></span>
+              <input type="range" id="gTexScale" min="5" max="150" value="30">
+              <input class="num" type="text" id="gTexScaleVal" value="3.0" readonly>
+            </div>
+            <div class="pr">
+              <span class="gi" data-icon="invert" data-tip="Invert|Swap which parts of the texture eat the ink"></span>
+              <span style="flex:1;color:var(--ink2)">Invert</span>
+              <span class="sw" data-cb="gTexInv"></span>
+              <input class="hidden-cb" type="checkbox" id="gTexInv">
+            </div>
+            <input type="file" id="texFile" accept="image/png,image/jpeg,image/webp" hidden>
+          </div>
+
+          <div class="sec">
+            <h2><span class="gi" data-icon="melt"></span><span>Melt</span></h2>
+            <div class="note">Blur the coverage and re-cut it. Specks fuse, the
+              outline goes soft and organic.</div>
+            <div class="pr">
+              <span class="gi" data-icon="melt" data-tip="Melt|Blur radius. Raise it and small specks dissolve into their neighbours"></span>
+              <input type="range" id="gMelt" min="0" max="80" value="0">
+              <input class="num" type="text" id="gMeltVal" value="0.0" readonly>
+            </div>
+            <div class="pr">
+              <span class="gi" data-icon="cutoff" data-tip="Cutoff|Level the blur is re-cut at. Low fattens, high eats away"></span>
+              <input type="range" id="gMeltCut" min="15" max="85" value="50">
+              <input class="num" type="text" id="gMeltCutVal" value="50" readonly>
+            </div>
+          </div>
+
+          <div class="sec">
+            <h2><span class="gi" data-icon="gscale"></span><span>Scale</span></h2>
+            <div class="pr">
+              <span class="gi" data-icon="gscale" data-tip="Effect scale|Scales grain, erosion, spread, texture and melt together, so the look holds at any artwork size"></span>
+              <input type="range" id="gScale" min="25" max="400" value="100">
+              <input class="num" type="text" id="gScaleVal" value="100%" readonly>
             </div>
           </div>
 

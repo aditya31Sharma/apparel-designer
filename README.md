@@ -25,9 +25,9 @@ contour counts, and the selected corner's coordinates.
 
 | | |
 |---|---|
-| Paste | <kbd>⌘V</kbd> anywhere with SVG markup on the clipboard |
+| Import SVG | The button at the top of the Source panel, or the folder in the toolbar |
+| Paste | <kbd>⌘V</kbd> anywhere with SVG markup on the clipboard, or the paste button |
 | Drop | An `.svg` file onto the canvas |
-| Open | The file picker |
 | Samples | Built-in, including real type outlines |
 
 Imports handle `path`, `rect`, `circle`, `ellipse`, `line`, `polyline` and `polygon`,
@@ -108,16 +108,64 @@ technique used in Photoshop:
    squares, simplified, and emitted as paths. Holes are wound against their shell so
    counters stay hollow.
 
+Three further passes run on top of that, each one also pure geometry.
+
+### Spread
+
+The stacked drop shadows, as real outlines. The distance is offset outward before the
+noise is added, so the ink grows past the original edge; the grown band is then
+dissolved against a noise field whose survival probability falls off with distance.
+The result is dense at the edge and thins into loose droplets, which is what a stack
+of zero-distance drop shadows looks like, except every droplet is a path.
+
+**Density** sets the falloff exponent: at the top the band stays nearly solid, at the
+bottom it is a thin haze.
+
+### Texture
+
+A grunge field clipped inside the shape, knocking ink out. Nine procedural fields ship
+with the tool (Rough, Crust, Speckle, Cracks, Scan lines, Fibre, Concrete, Halftone,
+Spray), and you can import your own image to use as the field instead.
+
+Each field has its own value distribution, so a fixed cutoff would mean a different
+thing for each one. Instead the field is sampled over the mask, sorted, and cut at the
+quantile you asked for: **Amount** therefore always means the same thing, the share of
+the shape the texture eats. A tiny deterministic jitter is added first, so a posterised
+texture, where huge mass sits on a single value, still splits its ties proportionally
+rather than taking all of them or none.
+
+Every swatch in the panel is the real field rendered at build time, not a drawing of it.
+
+### Melt
+
+Blur the coverage and re-cut it at a level. Small specks dissolve into their neighbours,
+near shapes fuse, and the outline goes soft and organic. Three box passes approximate a
+gaussian and stay linear. **Cutoff** decides which way it goes: below the midpoint it
+fattens, above it eats away.
+
+### Controls
+
 | Control | What it does |
 |---|---|
+| Style | Twelve presets. Each tile is the engine run on a sample mark, so the swatch is the effect. |
 | Grain | Size of the noise cell in mask pixels. Small is fine spatter, large is chunky tearing. |
 | Erosion | How far the outline is allowed to wander, in mask pixels. This is the main dial. |
 | Weight | Pushes the whole outline in or out: negative eats the shape away, positive fattens it. |
 | Patchy | How much the slow field varies erosion across the artwork. Zero is uniform, which looks mechanical. |
 | Spatter | Loose specks thrown clear of the edge, thinning with distance. |
 | Pits | Holes opened inside the strokes. |
+| Spread | How far ink carries past the original edge, in pixels. |
+| Density | Solid grown band at the top, a thin haze of droplets at the bottom. |
+| Texture / Amount / Scale | Which field, how much of the shape it eats, and how big its features are. |
+| Invert | Swaps which parts of the texture eat the ink. Set automatically for an imported image. |
+| Melt / Cutoff | Blur radius and the level the blur is re-cut at. |
+| Scale | Scales grain, erosion, spread, texture and melt together, so a look holds at any artwork size. |
 | Detail | Mask resolution. Higher resolves finer grain and costs more paths. |
 | Simplify | Contour simplification tolerance. Raise it to cut the path count. |
+
+**Scale** is worth its own line: every length in the dither is in mask pixels, so the
+same settings look different on a 400px wordmark and a 4000px one. One multiplier moves
+all of them together. Photoshop calls the same idea Scale Layer Effects.
 
 **New seed** re-rolls the noise. Everything is seeded, so the same settings and seed
 always give the same result.
@@ -147,6 +195,9 @@ the dither treatment; up to four gives a posterised version.
 | `warp.js` | Engine: path parsing, presets, simplify, curve fitting. Runs in node too |
 | `importer.js` | SVG to flat absolute paths, transforms baked in |
 | `snap.js` | Alignment and pixel snapping |
+| `grunge.js` | Dither engine: distance field, noise, textures, melt, contour tracing. Runs in node too |
+| `icons.js` | The line icons |
+| `chrome.js` | Icon injection, tooltips, switches, tool switching |
 | `app.js` | Canvas, grid, handles, export |
 
 Test the engine without a browser:
@@ -155,6 +206,15 @@ Test the engine without a browser:
 node -e "const W=require('./warp.js');
   console.log(W.Warp.warp(['M0 0H400V120H0Z'],{x:0,y:0,width:400,height:120},
     {preset:'arc',strength:60,smooth:true}))"
+```
+
+The dither engine runs headless too, which is how the texture cutoffs were calibrated:
+
+```sh
+node -e "const G=require('./grunge.js').Grunge;
+  const w=120,h=60,m=new Uint8Array(w*h);
+  for(let y=12;y<48;y++)for(let x=15;x<105;x++)m[y*w+x]=1;
+  console.log(G.erode(m,w,h,{texture:'fibre',textureAmount:0.5,spread:6}).stats)"
 ```
 
 ## Notes

@@ -143,3 +143,15 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
     linear-gradient(-45deg,transparent 75%,#e8e8e8 75%);
   background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;
   --grid:#dedede;--grid10:#cfcfcf;--axis:#a8bdd4}
+
+/* live preview tiles: dither styles and texture swatches */
+.tiles{grid-template-columns:repeat(4,1fr);gap:4px}
+.tiles .preset{height:34px;padding:0;overflow:hidden}
+.tiles .preset svg,.tiles .preset img{width:100%;height:100%;display:block;color:inherit}
+.tiles .preset img{object-fit:cover;opacity:.88}
+.tiles .preset.on img{opacity:1}
+button.wide{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+  height:26px;background:var(--field);border:1px solid var(--line2);border-radius:5px;
+  color:var(--ink);font:inherit;font-size:11px;cursor:pointer}
+button.wide svg{width:13px;height:13px;flex:none}
+button.wide:hover{border-color:var(--accent)}

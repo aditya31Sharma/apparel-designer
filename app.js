@@ -29,7 +29,8 @@
     quad: null,            // four corners in world px
     selected: -1,
     view: { x: 0, y: 0, k: 1 },
-    guides: [], out: [], seed: 1, grungeStats: null
+    guides: [], out: [], seed: 1, grungeStats: null,
+    texture: 'none', textureImage: null, textureName: '', gPreset: ''
   };
 
   /* ---------- geometry helpers ---------- */
@@ -58,14 +59,34 @@
 
   /* ---------- the warp ---------- */
 
+  /* Every length in the dither is in mask pixels, so one multiplier holds the
+   * whole look together as the artwork changes size. Photoshop calls this
+   * Scale Layer Effects. */
   function grungeOpts() {
+    var k = +$('gScale').value / 100;
     return {
-      grain: +$('gGrain').value / 10,
-      roughness: +$('gRough').value / 10,
-      bias: +$('gBias').value / 10,
+      grain: (+$('gGrain').value / 10) * k,
+      roughness: (+$('gRough').value / 10) * k,
+      bias: (+$('gBias').value / 10) * k,
+      blotch: 90 * k,
       blotchAmount: +$('gBlotch').value / 100,
       spatter: +$('gSpatter').value / 100,
+      spatterRange: 7 * k,
       pit: +$('gPit').value / 100,
+      pitDepth: 6 * k,
+
+      spread: (+$('gSpread').value / 10) * k,
+      spreadDensity: +$('gSpreadD').value / 100,
+
+      texture: S.texture,
+      textureAmount: S.texture === 'none' ? 0 : +$('gTexAmt').value / 100,
+      textureScale: (+$('gTexScale').value / 10) * k,
+      textureInvert: $('gTexInv').checked,
+      textureImage: S.textureImage,
+
+      meltRadius: (+$('gMelt').value / 10) * k,
+      meltCut: +$('gMeltCut').value / 100,
+
       pxPerUnit: +$('gRes').value / 10,
       detail: +$('gSimp').value / 100,
       minArea: 2.2,
@@ -402,7 +423,8 @@
 
   /* ---------- presets ---------- */
 
-  var ICON = 'M0 0 H96 V17 H0 Z M0 25 H70 V42 H0 Z M0 50 H96 V67 H0 Z';
+  // three stacked bars, warped live to draw each shape preset's thumbnail
+  var BARS = 'M0 0 H96 V17 H0 Z M0 25 H70 V42 H0 Z M0 50 H96 V67 H0 Z';
 
   var PRESET_TIP = {
     free: 'No bend of its own. Drag the four corners',
@@ -431,7 +453,7 @@
       if (p.id === 'free') {
         opts.corners = [{ x: .16, y: 0 }, { x: 1, y: .14 }, { x: .84, y: 1 }, { x: 0, y: .86 }];
       }
-      var d = Warp.warp([ICON], { x: 0, y: 0, width: 96, height: 67 }, opts).join(' ');
+      var d = Warp.warp([BARS], { x: 0, y: 0, width: 96, height: 67 }, opts).join(' ');
       var b = Warp.bounds([d]), pad = Math.max(b.width, b.height) * .05;
       return '<div class="preset' + (p.id === S.preset ? ' on' : '') + '" data-id="' +
         p.id + '" data-tip="' + p.label + '|' + (PRESET_TIP[p.id] || '') +
@@ -461,16 +483,19 @@
   $('srcColours').onchange = draw;
   $('strokeW').oninput = draw;
   $('strokeC').oninput = draw;
-  var G_IDS = ['gGrain', 'gRough', 'gBias', 'gBlotch', 'gSpatter', 'gPit', 'gRes', 'gSimp'];
+  var G_IDS = ['gGrain', 'gRough', 'gBias', 'gBlotch', 'gSpatter', 'gPit',
+               'gSpread', 'gSpreadD', 'gTexAmt', 'gTexScale',
+               'gMelt', 'gMeltCut', 'gScale', 'gRes', 'gSimp'];
+  var tenth = function (v) { return (v / 10).toFixed(1); };
   var G_FMT = {
-    gGrain: function (v) { return (v / 10).toFixed(1); },
-    gRough: function (v) { return (v / 10).toFixed(1); },
-    gBias: function (v) { return (v / 10).toFixed(1); },
-    gRes: function (v) { return (v / 10).toFixed(1); },
+    gGrain: tenth, gRough: tenth, gBias: tenth, gSpread: tenth,
+    gTexScale: tenth, gMelt: tenth, gRes: tenth,
+    gScale: function (v) { return v + '%'; },
     gSimp: function (v) { return (v / 100).toFixed(2); }
   };
   var G_DEFAULT = { gGrain: 16, gRough: 70, gBias: 0, gBlotch: 85, gSpatter: 45,
-                    gPit: 14, gRes: 20, gSimp: 45 };
+                    gPit: 14, gSpread: 0, gSpreadD: 55, gTexAmt: 0, gTexScale: 30,
+                    gMelt: 0, gMeltCut: 50, gScale: 100, gRes: 20, gSimp: 45 };
 
   function syncGrungeLabels() {
     G_IDS.forEach(function (id) {
@@ -480,7 +505,13 @@
   }
 
   G_IDS.forEach(function (id) {
-    $(id).oninput = function () { syncGrungeLabels(); render(); };
+    $(id).oninput = function () {
+      // Hand-editing a dial means the result is no longer that named style.
+      if (S.gPreset && id !== 'gRes' && id !== 'gSimp') {
+        S.gPreset = ''; markOn('gPresets', '');
+      }
+      syncGrungeLabels(); render();
+    };
   });
   $('gOn').onchange = function () {
     $('gControls').style.display = this.checked ? '' : 'none';
@@ -491,10 +522,216 @@
     render();
   };
   $('gReset').onclick = function () {
-    Object.keys(G_DEFAULT).forEach(function (k) { $(k).value = G_DEFAULT[k]; });
-    syncGrungeLabels(); render();
+    applyGrungePreset(G_DEFAULT, 'none', '');
   };
   syncGrungeLabels();
+
+  /* ---------- dither styles ---------- */
+
+  /* Slider values, not engine values, so the panel always shows what is set.
+   * Anything left out falls back to the default. */
+  var G_PRESETS = [
+    { id: 'spray', name: 'Spray', tip: 'The base spray can look. Soft eroded edge with ink carrying past it',
+      tex: 'rough', v: { gGrain: 14, gRough: 60, gSpatter: 50, gPit: 12,
+                         gSpread: 40, gSpreadD: 50, gTexAmt: 25, gTexScale: 30 } },
+    { id: 'halo', name: 'Halo', tip: 'A wide thin haze of droplets around an almost clean shape',
+      tex: 'none', v: { gGrain: 18, gRough: 45, gSpatter: 35, gPit: 6,
+                        gSpread: 95, gSpreadD: 22 } },
+    { id: 'charcoal', name: 'Charcoal', tip: 'Coarse and crumbling, the way a stick breaks on rough paper',
+      tex: 'crust', v: { gGrain: 34, gRough: 95, gBlotch: 95, gSpatter: 55, gPit: 22,
+                         gSpread: 20, gTexAmt: 40, gTexScale: 55 } },
+    { id: 'drybrush', name: 'Dry brush', tip: 'Long streaks pulled through the shape by a half dry bristle',
+      tex: 'fibre', v: { gGrain: 10, gRough: 35, gSpatter: 20, gPit: 8,
+                         gTexAmt: 45, gTexScale: 22 } },
+    { id: 'photocopy', name: 'Photocopy', tip: 'Banded and contrasty, a page run through the machine too many times',
+      tex: 'scan', v: { gGrain: 8, gRough: 30, gSpatter: 25, gPit: 6,
+                        gTexAmt: 40, gTexScale: 26, gMelt: 12, gMeltCut: 58 } },
+    { id: 'bleed', name: 'Bleed', tip: 'Wet ink spreading and pooling, edges fused together',
+      tex: 'none', v: { gGrain: 22, gRough: 70, gSpatter: 60, gPit: 8,
+                        gSpread: 55, gSpreadD: 70, gMelt: 38, gMeltCut: 34 } },
+    { id: 'sand', name: 'Sandpaper', tip: 'Fine even dust pitting the whole surface',
+      tex: 'speckle', v: { gGrain: 7, gRough: 25, gSpatter: 30, gPit: 30,
+                           gTexAmt: 35, gTexScale: 12 } },
+    { id: 'stamp', name: 'Rubber stamp', tip: 'Patchy pressure, solid in places and starved in others',
+      tex: 'crust', v: { gGrain: 20, gRough: 45, gBlotch: 95, gSpatter: 25, gPit: 24,
+                         gTexAmt: 30, gTexScale: 60, gMelt: 16, gMeltCut: 55 } },
+    { id: 'halftone', name: 'Halftone', tip: 'A printer dot screen on a 15 degree angle, eaten into the shape',
+      tex: 'halftone', v: { gGrain: 9, gRough: 20, gSpatter: 0, gPit: 0,
+                            gTexAmt: 45, gTexScale: 24 } },
+    { id: 'cracked', name: 'Cracked', tip: 'Thin branching splits running through solid ink',
+      tex: 'crack', v: { gGrain: 16, gRough: 40, gSpatter: 15, gPit: 10,
+                         gTexAmt: 30, gTexScale: 45 } },
+    { id: 'concrete', name: 'Concrete', tip: 'Sprayed onto a rough wall, texture and spread together',
+      tex: 'concrete', v: { gGrain: 24, gRough: 65, gBlotch: 90, gSpatter: 40, gPit: 18,
+                            gSpread: 25, gTexAmt: 40, gTexScale: 40 } },
+    { id: 'melted', name: 'Melted', tip: 'Blurred and re-cut hard, so everything fuses into organic blobs',
+      tex: 'none', v: { gGrain: 26, gRough: 85, gSpatter: 65, gPit: 10,
+                        gSpread: 35, gMelt: 55, gMeltCut: 62 } }
+  ];
+
+  function applyGrungePreset(vals, texture, id) {
+    Object.keys(G_DEFAULT).forEach(function (k) {
+      $(k).value = vals[k] !== undefined ? vals[k] : G_DEFAULT[k];
+    });
+    setTexture(texture);
+    S.gPreset = id || '';
+    markOn('gPresets', S.gPreset);
+    syncGrungeLabels();
+    render();
+  }
+
+  function markOn(hostId, id) {
+    Array.prototype.forEach.call($(hostId).children, function (n) {
+      n.classList.toggle('on', n.dataset.id === id);
+    });
+  }
+
+  /* Every tile is the engine run for real on a small block, so what you see on
+   * the swatch is what the preset does. */
+  function presetThumb(preset) {
+    var w = 46, h = 26, m = new Uint8Array(w * h);
+    for (var y = 6; y < 20; y++) for (var x = 5; x < 41; x++) m[y * w + x] = 1;
+    var v = {};
+    Object.keys(G_DEFAULT).forEach(function (k) {
+      v[k] = preset.v[k] !== undefined ? preset.v[k] : G_DEFAULT[k];
+    });
+    // The thumb is about a fifth of a real artwork, so scale the lengths down.
+    var k = 0.42;
+    var r = Grunge.erode(m, w, h, {
+      grain: (v.gGrain / 10) * k, roughness: (v.gRough / 10) * k,
+      bias: (v.gBias / 10) * k, blotch: 90 * k, blotchAmount: v.gBlotch / 100,
+      spatter: v.gSpatter / 100, spatterRange: 7 * k,
+      pit: v.gPit / 100, pitDepth: 6 * k,
+      spread: (v.gSpread / 10) * k, spreadDensity: v.gSpreadD / 100,
+      texture: preset.tex, textureAmount: preset.tex === 'none' ? 0 : v.gTexAmt / 100,
+      textureScale: (v.gTexScale / 10) * k,
+      meltRadius: (v.gMelt / 10) * k, meltCut: v.gMeltCut / 100,
+      detail: 0.25, smooth: 1, minArea: 0.6, seed: 11
+    });
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="xMidYMid meet">' +
+      '<path d="' + Grunge.ringsToPath(r.rings, {}) + '" fill="currentColor"/></svg>';
+  }
+
+  /* Texture swatches are the raw field cut at its own midpoint, so each one
+   * shows its real character rather than a drawn impression of it. */
+  function textureThumb(name) {
+    var n = 34, c = document.createElement('canvas');
+    c.width = c.height = n;
+    var ctx = c.getContext('2d');
+    var img = ctx.createImageData(n, n);
+    var N = { a: Grunge.makeNoise(3307), b: Grunge.makeNoise(7717) };
+    var fn = Grunge.TEXTURES[name];
+    var vals = new Float64Array(n * n), sorted;
+    for (var i = 0, y = 0; y < n; y++) {
+      for (var x = 0; x < n; x++, i++) vals[i] = fn(N, x * 0.38, y * 0.38);
+    }
+    sorted = Float64Array.from(vals); sorted.sort();
+    var cut = sorted[Math.floor(0.55 * (n * n - 1))];
+    for (i = 0; i < n * n; i++) {
+      var on = vals[i] > cut ? 0 : 214;
+      img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = on;
+      img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c.toDataURL();
+  }
+
+  function setTexture(name) {
+    S.texture = name;
+    markOn('gTextures', name);
+  }
+
+  function buildDitherTiles() {
+    $('gPresets').innerHTML = G_PRESETS.map(function (p) {
+      return '<div class="preset" data-id="' + p.id + '" data-tip="' + p.name +
+        '|' + p.tip + '">' + presetThumb(p) + '</div>';
+    }).join('');
+    Array.prototype.forEach.call($('gPresets').children, function (n) {
+      n.onclick = function () {
+        var p = G_PRESETS.filter(function (o) { return o.id === n.dataset.id; })[0];
+        applyGrungePreset(p.v, p.tex, p.id);
+      };
+    });
+
+    var TEX_TIP = {
+      none: 'No texture|Leave the inside of the shape solid',
+      rough: 'Rough|Broad mottled wear, the most general purpose one',
+      crust: 'Crust|Big crusty patches with hard edges',
+      speckle: 'Speckle|Fine even dust',
+      crack: 'Cracks|Thin branching splits',
+      scan: 'Scan lines|Horizontal banding, like a bad photocopy',
+      fibre: 'Fibre|Long diagonal strokes, a dry brush or paper grain',
+      concrete: 'Concrete|Pitted stone, blotches and ridges together',
+      halftone: 'Halftone|A print dot screen on a 15 degree angle',
+      spray: 'Spray|Clustered droplets, dense in patches',
+      image: 'Own texture|Use an image you import as the texture'
+    };
+    var tiles = '<div class="preset" data-id="none" data-tip="' + TEX_TIP.none +
+      '">' + ICON.none + '</div>';
+    tiles += Grunge.TEXTURE_NAMES.map(function (t) {
+      return '<div class="preset" data-id="' + t + '" data-tip="' + TEX_TIP[t] +
+        '"><img alt="" src="' + textureThumb(t) + '"></div>';
+    }).join('');
+    tiles += '<div class="preset" id="texImport" data-id="image" data-tip="' +
+      TEX_TIP.image + '">' + ICON.image + '</div>';
+    $('gTextures').innerHTML = tiles;
+
+    Array.prototype.forEach.call($('gTextures').children, function (n) {
+      n.onclick = function () {
+        if (n.dataset.id === 'image') { $('texFile').click(); return; }
+        setTexture(n.dataset.id);
+        // Picking a texture with the amount at zero would do nothing visible.
+        if (n.dataset.id !== 'none' && +$('gTexAmt').value === 0) {
+          $('gTexAmt').value = 35; syncGrungeLabels();
+        }
+        render();
+      };
+    });
+    setTexture(S.texture);
+  }
+
+  /* An imported texture becomes a luminance field. Most distress scans are ink
+   * on paper, so if the image reads mostly light, assume the dark marks are
+   * what should eat the shape and start inverted. */
+  $('texFile').onchange = function () {
+    var f = this.files[0];
+    this.value = '';
+    if (!f) return;
+    var url = URL.createObjectURL(f);
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      var max = 512;
+      var sc = Math.min(1, max / Math.max(img.width, img.height));
+      var w = Math.max(8, Math.round(img.width * sc));
+      var h = Math.max(8, Math.round(img.height * sc));
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      var ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, w, h);
+      var px = ctx.getImageData(0, 0, w, h).data;
+      var data = new Float32Array(w * h), sum = 0;
+      for (var i = 0, q = 0; i < data.length; i++, q += 4) {
+        var a = px[q + 3] / 255;
+        var l = (0.2126 * px[q] + 0.7152 * px[q + 1] + 0.0722 * px[q + 2]) / 255;
+        data[i] = l * a + (1 - a);
+        sum += data[i];
+      }
+      S.textureImage = { data: data, w: w, h: h };
+      S.textureName = f.name;
+      $('gTexInv').checked = sum / data.length > 0.55;
+      $('gTexInv').dispatchEvent(new Event('change', { bubbles: true }));
+      $('texImport').dataset.tip = 'Own texture|' + f.name +
+        ', ' + w + ' by ' + h + '. Click to swap it';
+      setTexture('image');
+      if (+$('gTexAmt').value === 0) { $('gTexAmt').value = 40; syncGrungeLabels(); }
+      render();
+    };
+    img.onerror = function () { fail('Could not read that texture'); };
+    img.src = url;
+  };
+  $('gTexInv').onchange = render;
+  buildDitherTiles();
 
   $('showGrid').onchange = draw;
   $('bg').onchange = function () {
@@ -601,6 +838,7 @@
   }
 
   $('open').onclick = function () { $('file').click(); };
+  $('openSvg').onclick = function () { $('file').click(); };
   $('file').onchange = function () {
     var f = this.files[0];
     if (!f) return;
@@ -608,6 +846,7 @@
     else f.text().then(function (t) { loadMarkup(t, f.name); });
     this.value = '';
   };
+  $('pasteSvg').onclick = function () { $('pasteBtn').onclick(); };
   $('pasteBtn').onclick = function () {
     if (!navigator.clipboard || !navigator.clipboard.readText) {
       return fail('Use ⌘V instead, this browser will not read the clipboard on demand');
