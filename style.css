@@ -5,7 +5,7 @@
   --accent:#0d99ff; --accent-dim:#0d99ff33;
   --snap:#ff4d88; --field:#383838;
   --grid:#282828; --grid10:#333; --axis:#3a4a5e;
-  --tb:36px; --rail:40px; --panelw:240px;
+  --tb:36px; --rail:40px; --panelw:276px;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden}
@@ -68,13 +68,18 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
   display:flex;align-items:center;gap:6px;letter-spacing:.005em}
 .sec h2 .grow{flex:1}
 
-/* a Figma property row: icon, control, value */
+/* a property row: icon, name, control, value. The name carries the meaning,
+ * the icon is only there to scan by. */
 .pr{display:flex;align-items:center;gap:6px;height:26px;margin-bottom:3px}
 .pr:last-child{margin-bottom:0}
 .gi{width:22px;height:22px;flex:none;display:grid;place-items:center;
   color:var(--muted);border-radius:4px}
 .gi svg{width:15px;height:15px}
 .pr:hover .gi{color:var(--ink2)}
+.lbl{flex:none;width:64px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.pr:hover .lbl{color:var(--ink)}
+.lbl.grow{flex:1;width:auto}
 .pr input[type=range]{flex:1;min-width:0;-webkit-appearance:none;height:2px;
   border-radius:2px;background:var(--line2);outline:none}
 .pr input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;
@@ -144,12 +149,31 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
   background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;
   --grid:#dedede;--grid10:#cfcfcf;--axis:#a8bdd4}
 
-/* live preview tiles: dither styles and texture swatches */
-.tiles{grid-template-columns:repeat(4,1fr);gap:4px}
-.tiles .preset{height:34px;padding:0;overflow:hidden}
-.tiles .preset svg,.tiles .preset img{width:100%;height:100%;display:block;color:inherit}
-.tiles .preset img{object-fit:cover;opacity:.88}
-.tiles .preset.on img{opacity:1}
+/* live preview tiles: dither styles and texture swatches, each captioned */
+.tiles{grid-template-columns:repeat(2,1fr);gap:5px}
+.tiles .preset{height:auto;padding:0;overflow:hidden;display:block;
+  place-items:stretch;background:none;border-radius:6px}
+.tiles .thumb{height:38px;border-radius:5px 5px 0 0;overflow:hidden;
+  background:var(--field);display:block}
+.tiles .thumb svg,.tiles .thumb img{width:100%;height:100%;display:block;color:#d4d4d4}
+.tiles .thumb img{object-fit:cover;opacity:.9}
+.tiles .cap{display:block;padding:4px 5px 5px;background:var(--field);
+  border-radius:0 0 5px 5px;color:var(--ink2);font-size:10.5px;text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tiles .preset:hover .cap{color:var(--ink)}
+.tiles .preset.on .thumb,.tiles .preset.on .cap{background:var(--accent-dim)}
+.tiles .preset.on{outline:1px solid var(--accent)}
+.tiles .preset.on .cap{color:#fff}
+.tiles .preset.on .thumb svg,.tiles .preset.on .thumb img{color:#fff;opacity:1}
+
+/* warp shape presets: glyph plus name, three across */
+.grid.named{grid-template-columns:repeat(3,1fr);gap:4px}
+.grid.named .preset{height:auto;padding:4px 2px 5px;display:block;place-items:stretch}
+.grid.named .preset svg{width:100%;height:16px;margin:0 auto 3px}
+.grid.named .nm{display:block;font-size:9.5px;color:var(--muted);text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid.named .preset:hover .nm{color:var(--ink2)}
+.grid.named .preset.on .nm{color:#fff}
 button.wide{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
   height:26px;background:var(--field);border:1px solid var(--line2);border-radius:5px;
   color:var(--ink);font:inherit;font-size:11px;cursor:pointer}

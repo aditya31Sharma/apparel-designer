@@ -82,8 +82,9 @@ Taper Top, Taper Base, Perspective, Fisheye, Twist, Fish. Strength runs -100 to 
 negative bends the other way. **Smooth curves** refits the deformed outline to beziers,
 off gives faceted polygons.
 
-Each preset's icon is drawn by running the real engine on a sample mark, so the icon
-always matches what the preset does.
+Each preset's thumbnail is drawn by running the real engine on a sample mark, so the
+tile always matches what the preset does. Every tile and every control carries its name:
+the icon is only there to scan by, and hovering gives the longer explanation.
 
 ## Dither
 

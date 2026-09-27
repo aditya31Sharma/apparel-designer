@@ -68,11 +68,13 @@
         <div class="chips" id="samples"></div>
         <div class="pr" id="imgRow" style="display:none">
           <span class="gi" data-icon="tone" data-tip="Tones|How many grey bands the image is split into before tracing"></span>
+          <span class="lbl">Tones</span>
           <input type="range" id="levels" min="1" max="4" value="1">
           <input class="num" type="text" id="levelsVal" value="1" readonly>
         </div>
         <div class="pr" id="imgRow2" style="display:none">
           <span class="gi" data-icon="cutoff" data-tip="Cutoff|Where light becomes ink"></span>
+          <span class="lbl">Cutoff</span>
           <input type="range" id="imgThresh" min="5" max="95" value="55">
           <input class="num" type="text" id="imgThreshVal" value="55" readonly>
         </div>
@@ -85,24 +87,25 @@
       <div id="panelWarp">
         <div class="sec">
           <h2>Shape</h2>
-          <div class="grid" id="presets"></div>
+          <div class="grid named" id="presets"></div>
         </div>
 
         <div class="sec">
           <div class="pr">
             <span class="gi" data-icon="strength" data-tip="Strength|How hard the preset bends. Negative bends the other way"></span>
+            <span class="lbl">Strength</span>
             <input type="range" id="strength" min="-100" max="100" value="45">
             <input class="num" type="text" id="strengthVal" value="45" readonly>
           </div>
           <div class="pr">
             <span class="gi" data-icon="smooth" data-tip="Smooth curves|Refit the deformed outline to bezier curves. Off gives faceted edges"></span>
-            <span style="flex:1;color:var(--ink2)">Smooth</span>
+            <span class="lbl grow">Smooth</span>
             <span class="sw on" data-cb="smooth"></span>
             <input class="hidden-cb" type="checkbox" id="smooth" checked>
           </div>
           <div class="pr">
             <span class="gi" data-icon="corners" data-tip="Reset corners|Return the four handles to a rectangle"></span>
-            <span style="flex:1;color:var(--ink2)">Corners</span>
+            <span class="lbl grow">Corners</span>
             <button class="tbtn" id="resetQuad" data-icon="reset" data-tip="Reset corners"></button>
           </div>
         </div>
@@ -111,6 +114,7 @@
           <h2>Paint</h2>
           <div class="pr">
             <span class="gi" data-icon="fill" data-tip="Fill|Colour of the shape"></span>
+            <span class="lbl">Fill</span>
             <input type="color" class="swatch" id="fill" value="#ffffff">
             <span style="flex:1"></span>
             <span class="sw on" data-cb="fillOn"></span>
@@ -118,6 +122,7 @@
           </div>
           <div class="pr">
             <span class="gi" data-icon="stroke" data-tip="Stroke|Outline weight and colour"></span>
+            <span class="lbl">Stroke</span>
             <input class="num" type="number" id="strokeW" min="0" max="200" step="0.5" value="0"
               style="text-align:left;width:52px">
             <input type="color" class="swatch" id="strokeC" value="#ff4d88">
@@ -125,7 +130,7 @@
           </div>
           <div class="pr">
             <span class="gi" data-icon="image" data-tip="Source colours|Use the fill and stroke from the imported file instead of the values above"></span>
-            <span style="flex:1;color:var(--ink2)">From file</span>
+            <span class="lbl grow">From file</span>
             <span class="sw" data-cb="srcColours"></span>
             <input class="hidden-cb" type="checkbox" id="srcColours">
           </div>
@@ -135,18 +140,19 @@
           <h2>Snapping</h2>
           <div class="pr">
             <span class="gi" data-icon="snapPix" data-tip="Pixel grid|Round handles to whole pixels"></span>
-            <span style="flex:1;color:var(--ink2)">Pixels</span>
+            <span class="lbl grow">Pixels</span>
             <span class="sw on" data-cb="snapPixel"></span>
             <input class="hidden-cb" type="checkbox" id="snapPixel" checked>
           </div>
           <div class="pr">
             <span class="gi" data-icon="snapAln" data-tip="Alignment|Snap to the other corners and to the artwork edges and centre"></span>
-            <span style="flex:1;color:var(--ink2)">Guides</span>
+            <span class="lbl grow">Guides</span>
             <span class="sw on" data-cb="snapAlign"></span>
             <input class="hidden-cb" type="checkbox" id="snapAlign" checked>
           </div>
           <div class="pr">
             <span class="gi" data-icon="step" data-tip="Step|Grid size the pixel snap rounds to"></span>
+            <span class="lbl">Grid step</span>
             <input class="num" type="number" id="gridStep" min="0.25" max="100" step="0.25"
               value="1" style="text-align:left;width:52px">
             <span style="flex:1"></span>
@@ -176,31 +182,37 @@
             <h2>Edge</h2>
             <div class="pr">
               <span class="gi" data-icon="grain" data-tip="Grain|Size of the speckle. Small is a fine spray, large tears in chunks"></span>
+              <span class="lbl">Grain</span>
               <input type="range" id="gGrain" min="6" max="70" value="16">
               <input class="num" type="text" id="gGrainVal" value="1.6" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="erosion" data-tip="Erosion|How far the outline is eaten away. The main dial"></span>
+              <span class="lbl">Erosion</span>
               <input type="range" id="gRough" min="0" max="200" value="70">
               <input class="num" type="text" id="gRoughVal" value="7.0" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="weight" data-tip="Weight|Push the whole outline in or out. Negative thins the shape, positive fattens it"></span>
+              <span class="lbl">Weight</span>
               <input type="range" id="gBias" min="-60" max="60" value="0">
               <input class="num" type="text" id="gBiasVal" value="0.0" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="patchy" data-tip="Patchy|How much erosion varies across the artwork. Zero looks mechanical"></span>
+              <span class="lbl">Patchy</span>
               <input type="range" id="gBlotch" min="0" max="100" value="85">
               <input class="num" type="text" id="gBlotchVal" value="85" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="spatter" data-tip="Spatter|Loose specks thrown clear of the edge"></span>
+              <span class="lbl">Spatter</span>
               <input type="range" id="gSpatter" min="0" max="100" value="45">
               <input class="num" type="text" id="gSpatterVal" value="45" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="pits" data-tip="Pits|Holes opened up inside the strokes"></span>
+              <span class="lbl">Pits</span>
               <input type="range" id="gPit" min="0" max="45" value="14">
               <input class="num" type="text" id="gPitVal" value="14" readonly>
             </div>
@@ -212,11 +224,13 @@
               The stacked drop shadows, as real geometry.</div>
             <div class="pr">
               <span class="gi" data-icon="spread" data-tip="Spread|How far the ink carries past the original edge, in pixels"></span>
+              <span class="lbl">Spread</span>
               <input type="range" id="gSpread" min="0" max="250" value="0">
               <input class="num" type="text" id="gSpreadVal" value="0.0" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="density" data-tip="Density|Solid at the top, a thin haze of droplets at the bottom"></span>
+              <span class="lbl">Density</span>
               <input type="range" id="gSpreadD" min="0" max="100" value="55">
               <input class="num" type="text" id="gSpreadDVal" value="55" readonly>
             </div>
@@ -229,17 +243,19 @@
             <div class="grid tiles" id="gTextures"></div>
             <div class="pr">
               <span class="gi" data-icon="texAmt" data-tip="Amount|Share of the shape the texture eats away"></span>
+              <span class="lbl">Amount</span>
               <input type="range" id="gTexAmt" min="0" max="100" value="0">
               <input class="num" type="text" id="gTexAmtVal" value="0" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="texScale" data-tip="Texture scale|Size of the texture features, in pixels"></span>
+              <span class="lbl">Size</span>
               <input type="range" id="gTexScale" min="5" max="150" value="30">
               <input class="num" type="text" id="gTexScaleVal" value="3.0" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="invert" data-tip="Invert|Swap which parts of the texture eat the ink"></span>
-              <span style="flex:1;color:var(--ink2)">Invert</span>
+              <span class="lbl grow">Invert</span>
               <span class="sw" data-cb="gTexInv"></span>
               <input class="hidden-cb" type="checkbox" id="gTexInv">
             </div>
@@ -252,11 +268,13 @@
               outline goes soft and organic.</div>
             <div class="pr">
               <span class="gi" data-icon="melt" data-tip="Melt|Blur radius. Raise it and small specks dissolve into their neighbours"></span>
+              <span class="lbl">Blur</span>
               <input type="range" id="gMelt" min="0" max="80" value="0">
               <input class="num" type="text" id="gMeltVal" value="0.0" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="cutoff" data-tip="Cutoff|Level the blur is re-cut at. Low fattens, high eats away"></span>
+              <span class="lbl">Cutoff</span>
               <input type="range" id="gMeltCut" min="15" max="85" value="50">
               <input class="num" type="text" id="gMeltCutVal" value="50" readonly>
             </div>
@@ -266,6 +284,7 @@
             <h2><span class="gi" data-icon="gscale"></span><span>Scale</span></h2>
             <div class="pr">
               <span class="gi" data-icon="gscale" data-tip="Effect scale|Scales grain, erosion, spread, texture and melt together, so the look holds at any artwork size"></span>
+              <span class="lbl">Effect scale</span>
               <input type="range" id="gScale" min="25" max="400" value="100">
               <input class="num" type="text" id="gScaleVal" value="100%" readonly>
             </div>
@@ -275,17 +294,19 @@
             <h2>Quality</h2>
             <div class="pr">
               <span class="gi" data-icon="detail" data-tip="Detail|Working resolution. Higher resolves finer grain and costs more paths"></span>
+              <span class="lbl">Detail</span>
               <input type="range" id="gRes" min="10" max="45" value="20">
               <input class="num" type="text" id="gResVal" value="2.0" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="simplify" data-tip="Simplify|Contour tolerance. Raise it to cut the number of paths"></span>
+              <span class="lbl">Simplify</span>
               <input type="range" id="gSimp" min="15" max="150" value="45">
               <input class="num" type="text" id="gSimpVal" value="0.45" readonly>
             </div>
             <div class="pr">
               <span class="gi" data-icon="seed" data-tip="Seed|Re-roll the randomness. Same seed always gives the same result"></span>
-              <span style="flex:1;color:var(--ink2)">Seed</span>
+              <span class="lbl grow">Seed</span>
               <button class="tbtn" id="gSeed" data-icon="seed" data-tip="New seed"></button>
               <button class="tbtn" id="gReset" data-icon="reset" data-tip="Reset dither"></button>
             </div>

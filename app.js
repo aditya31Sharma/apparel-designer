@@ -459,7 +459,7 @@
         p.id + '" data-tip="' + p.label + '|' + (PRESET_TIP[p.id] || '') +
         '"><svg viewBox="' + (b.x - pad) + ' ' + (b.y - pad) + ' ' +
         (b.width + pad * 2) + ' ' + (b.height + pad * 2) + '"><path d="' + d +
-        '" fill="currentColor"/></svg></div>';
+        '" fill="currentColor"/></svg><span class="nm">' + p.label + '</span></div>';
     }).join('');
     Array.prototype.forEach.call($('presets').children, function (n) {
       n.onclick = function () {
@@ -615,19 +615,21 @@
   /* Texture swatches are the raw field cut at its own midpoint, so each one
    * shows its real character rather than a drawn impression of it. */
   function textureThumb(name) {
-    var n = 34, c = document.createElement('canvas');
-    c.width = c.height = n;
+    // Drawn at twice the tile it sits in, and in the tile's own proportions, so
+    // the swatch is neither stretched nor chunky.
+    var w = 250, h = 76, c = document.createElement('canvas');
+    c.width = w; c.height = h;
     var ctx = c.getContext('2d');
-    var img = ctx.createImageData(n, n);
+    var img = ctx.createImageData(w, h);
     var N = { a: Grunge.makeNoise(3307), b: Grunge.makeNoise(7717) };
     var fn = Grunge.TEXTURES[name];
-    var vals = new Float64Array(n * n), sorted;
-    for (var i = 0, y = 0; y < n; y++) {
-      for (var x = 0; x < n; x++, i++) vals[i] = fn(N, x * 0.38, y * 0.38);
+    var vals = new Float64Array(w * h);
+    for (var i = 0, y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++, i++) vals[i] = fn(N, x * 0.09, y * 0.09);
     }
-    sorted = Float64Array.from(vals); sorted.sort();
-    var cut = sorted[Math.floor(0.55 * (n * n - 1))];
-    for (i = 0; i < n * n; i++) {
+    var sorted = Float64Array.from(vals); sorted.sort();
+    var cut = sorted[Math.floor(0.55 * (vals.length - 1))];
+    for (i = 0; i < vals.length; i++) {
       var on = vals[i] > cut ? 0 : 214;
       img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = on;
       img.data[i * 4 + 3] = 255;
@@ -644,7 +646,8 @@
   function buildDitherTiles() {
     $('gPresets').innerHTML = G_PRESETS.map(function (p) {
       return '<div class="preset" data-id="' + p.id + '" data-tip="' + p.name +
-        '|' + p.tip + '">' + presetThumb(p) + '</div>';
+        '|' + p.tip + '"><span class="thumb">' + presetThumb(p) +
+        '</span><span class="cap">' + p.name + '</span></div>';
     }).join('');
     Array.prototype.forEach.call($('gPresets').children, function (n) {
       n.onclick = function () {
@@ -654,7 +657,7 @@
     });
 
     var TEX_TIP = {
-      none: 'No texture|Leave the inside of the shape solid',
+      none: 'None|No texture. Leave the inside of the shape solid',
       rough: 'Rough|Broad mottled wear, the most general purpose one',
       crust: 'Crust|Big crusty patches with hard edges',
       speckle: 'Speckle|Fine even dust',
@@ -664,16 +667,20 @@
       concrete: 'Concrete|Pitted stone, blotches and ridges together',
       halftone: 'Halftone|A print dot screen on a 15 degree angle',
       spray: 'Spray|Clustered droplets, dense in patches',
-      image: 'Own texture|Use an image you import as the texture'
+      image: 'Import|Use an image of your own as the texture'
     };
-    var tiles = '<div class="preset" data-id="none" data-tip="' + TEX_TIP.none +
-      '">' + ICON.none + '</div>';
+    var tile = function (id, inner) {
+      var parts = TEX_TIP[id].split('|');
+      return '<div class="preset" data-id="' + id + '" data-tip="' + TEX_TIP[id] +
+        '"' + (id === 'image' ? ' id="texImport"' : '') +
+        '><span class="thumb">' + inner + '</span>' +
+        '<span class="cap">' + parts[0] + '</span></div>';
+    };
+    var tiles = tile('none', window.ICON.none);
     tiles += Grunge.TEXTURE_NAMES.map(function (t) {
-      return '<div class="preset" data-id="' + t + '" data-tip="' + TEX_TIP[t] +
-        '"><img alt="" src="' + textureThumb(t) + '"></div>';
+      return tile(t, '<img alt="" src="' + textureThumb(t) + '">');
     }).join('');
-    tiles += '<div class="preset" id="texImport" data-id="image" data-tip="' +
-      TEX_TIP.image + '">' + ICON.image + '</div>';
+    tiles += tile('image', window.ICON.image);
     $('gTextures').innerHTML = tiles;
 
     Array.prototype.forEach.call($('gTextures').children, function (n) {
@@ -721,7 +728,7 @@
       S.textureName = f.name;
       $('gTexInv').checked = sum / data.length > 0.55;
       $('gTexInv').dispatchEvent(new Event('change', { bubbles: true }));
-      $('texImport').dataset.tip = 'Own texture|' + f.name +
+      $('texImport').dataset.tip = 'Import|' + f.name +
         ', ' + w + ' by ' + h + '. Click to swap it';
       setTexture('image');
       if (+$('gTexAmt').value === 0) { $('gTexAmt').value = 40; syncGrungeLabels(); }
