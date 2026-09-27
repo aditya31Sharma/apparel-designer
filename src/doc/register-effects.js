@@ -58,10 +58,17 @@
       meltRadius: 0, meltCut: 0.5,
       scale: 1,
       pxPerUnit: 2, detail: 0.45, seed: 1,
+      imageCut: 0.55, imageLevels: 1,
       preset: ''
     },
     run: function (input, p, ctx) {
       if (!ctx.maskFromPaths) return null;
+      // A photo has no outline to erode, so trace its dark areas into one first.
+      // Without this the dither would faithfully erode the bounding rectangle.
+      var items = input.pixels && ctx.traceImage
+        ? ctx.traceImage(input, p)
+        : input.items;
+      if (!items || !items.length) return null;
       var s = p.scale || 1;
       var o = {
         grain: p.grain * s, roughness: p.roughness * s, bias: p.bias * s,
@@ -76,8 +83,8 @@
         detail: p.detail, minArea: 2.2, smooth: 1, seed: p.seed,
         pxPerUnit: p.pxPerUnit * (ctx.quality === undefined ? 1 : ctx.quality)
       };
-      var items = [], kept = 0, points = 0;
-      input.items.forEach(function (it) {
+      var out = [], kept = 0, points = 0;
+      items.forEach(function (it) {
         var bb = W.bounds([it.d]);
         if (!bb.width || !bb.height) return;
         // Keep the working bitmap sane however far Detail is pushed.
@@ -85,12 +92,12 @@
         var r = G.fromPaths([it.d], bb, Object.assign({}, o, { pxPerUnit: px }));
         if (!r.d) return;
         kept += r.stats.kept; points += r.stats.points;
-        items.push(Object.assign({}, it, { d: r.d }));
+        out.push(Object.assign({}, it, { d: r.d }));
       });
-      if (!items.length) return null;
+      if (!out.length) return null;
       return {
-        items: items,
-        bbox: W.bounds(items.map(function (i) { return i.d; })),
+        items: out,
+        bbox: W.bounds(out.map(function (i) { return i.d; })),
         matte: input.matte,
         stats: { shapes: kept, points: points }
       };

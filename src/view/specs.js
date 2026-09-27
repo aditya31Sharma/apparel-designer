@@ -404,8 +404,8 @@
                   { value: 'diamond', label: 'Diamond', thumb: glyph('dotDi'), tip: 'Rotated squares' }
                 ];
               } },
-            { kind: 'range', id: 'frequency', label: 'Frequency', icon: 'freq', min: 12, max: 320, step: 1,
-              tip: 'Screen cells across the artwork. Higher is a finer dot and far more of them' },
+            { kind: 'range', id: 'frequency', label: 'Frequency', icon: 'freq', min: 12, max: 500, step: 1,
+              tip: 'Screen cells across the artwork. The pitch in pixels is shown in the toolbar' },
             { kind: 'range', id: 'inkDensity', label: 'Ink density', icon: 'inkDrop', min: 0.2, max: 1.3, step: 0.01,
               fmt: pct, tip: 'Global multiplier on how much ink each dot carries' },
             { kind: 'range', id: 'dotGain', label: 'Dot gain', icon: 'gain', min: -1, max: 1, step: 0.01,

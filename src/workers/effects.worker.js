@@ -21,6 +21,7 @@ importScripts(
 );
 
 var generation = 0;
+var sources = {};               // layer id -> pixels, so a photo crosses once
 
 self.onmessage = function (e) {
   var msg = e.data;
@@ -32,17 +33,20 @@ self.onmessage = function (e) {
   var t0 = performance.now();
 
   try {
+    if (msg.pixels) sources[msg.sourceId] = msg.pixels;
+
     var input = {
       items: msg.items,
       bbox: msg.bbox,
       matte: msg.matte || null,
-      bitmap: msg.bitmap || null
+      pixels: sources[msg.sourceId] || null
     };
 
     var ctx = {
       quality: msg.quality,
       textureImage: msg.textureImage || null,
       rasterize: self.Raster.rasterize,
+      traceImage: self.Raster.traceImage,
       maskFromPaths: self.Grunge.maskFromPaths
     };
 

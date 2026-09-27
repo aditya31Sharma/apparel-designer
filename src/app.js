@@ -21,6 +21,7 @@
   var history = Doc.History(80);
   var viewport, overlay, panels = {}, worker = null;
   var generation = 0, pending = null, interactive = false, idleTimer = null;
+  var pixelsSent = null;          // which layer's pixels the worker already holds
   var renders = {};                 // layerId -> drawable result
   var tool = 'warp';
   var textureImage = null, textureName = '';
@@ -76,8 +77,17 @@
       }),
       quality: quality,
       matte: layer.matte,
-      textureImage: textureImage
+      textureImage: textureImage,
+      sourceId: layer.id
     };
+
+    // A photo's pixels go over once and stay cached in the worker. Copying four
+    // megabytes on every slider tick would cost more than the screen itself.
+    if (layer.source.pixels && pixelsSent !== layer.id) {
+      var px = layer.source.pixels;
+      job.pixels = { data: new Uint8ClampedArray(px.data), w: px.w, h: px.h };
+      pixelsSent = layer.id;
+    }
 
     if (worker) {
       pending = { layer: layer, generation: job.generation };
@@ -92,10 +102,12 @@
     try {
       var ctx = {
         quality: job.quality, textureImage: job.textureImage,
-        rasterize: window.Raster.rasterize, maskFromPaths: window.Grunge.maskFromPaths
+        rasterize: window.Raster.rasterize, traceImage: window.Raster.traceImage,
+        maskFromPaths: window.Grunge.maskFromPaths
       };
       var run = Effects.runStack({ effects: job.effects },
-        { items: job.items, bbox: job.bbox, matte: job.matte }, ctx);
+        { items: job.items, bbox: job.bbox, matte: job.matte,
+          pixels: layer.source.pixels }, ctx);
       acceptResult(layer, run.result, run.stats, job.generation);
     } catch (err) {
       fail(err.message || String(err));
@@ -152,6 +164,9 @@
     }
     if (shapes && shapes.length) bits.push(fmtN(shapes.length) + ' shapes');
     var s = stats || {};
+    if (s.halftone && s.halftone.pitch) {
+      bits.push(Math.round(s.halftone.pitch * 10) / 10 + 'px pitch');
+    }
     if (s.dither) bits.push(fmtN(s.dither.shapes) + ' contours');
     if (ms !== undefined) bits.push(ms + 'ms');
     var box = $('stats');
@@ -286,11 +301,13 @@
 
   /* ================= loading artwork ================= */
 
-  function loadItems(items, name, bitmap) {
+  function loadItems(items, name, bitmap, pixels) {
     var bbox = W.bounds(items.map(function (i) { return i.d; }));
     if (!bbox.width || !bbox.height) { fail('That artwork has no area'); return; }
 
-    var layer = Doc.makeLayer({ items: items, bbox: bbox, bitmap: bitmap || null }, name);
+    var layer = Doc.makeLayer({
+      items: items, bbox: bbox, bitmap: bitmap || null, pixels: pixels || null
+    }, name);
     Doc.ensureStack(layer, Effects.ids(), Effects.defaultsFor);
     // Nothing is applied on import. The artwork looks exactly as it arrived.
     layer.effects.forEach(function (e) { e.on = false; });
@@ -299,6 +316,7 @@
     doc.layers = [layer];
     doc.selection = layer.id;
     renders = {};
+    pixelsSent = null;
     history.clear();
 
     $('srcName').textContent = name + '  ·  ' +
@@ -320,23 +338,43 @@
     }
   }
 
+  var PIXEL_CAP = 2600;      // plenty for any screen frequency worth printing
+
   function loadImageFile(file) {
     var url = URL.createObjectURL(file);
     var img = new Image();
     img.onload = function () {
       URL.revokeObjectURL(url);
-      // A bitmap becomes a single rectangle carrying the pixels. Halftone reads
-      // the pixels directly; dither traces them.
-      var w = img.naturalWidth, h = img.naturalHeight;
+      // The pixels are pulled out once, here, because an HTMLImageElement
+      // cannot be handed to a worker and re-reading it per keystroke would be
+      // the slowest thing in the app.
+      var nw = img.naturalWidth, nh = img.naturalHeight;
+      var sc = Math.min(1, PIXEL_CAP / Math.max(nw, nh));
+      var pw = Math.max(1, Math.round(nw * sc)), ph = Math.max(1, Math.round(nh * sc));
+      var c = window.Raster.canvasOf(pw, ph);
+      var g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0, pw, ph);
+      var pixels = { data: g.getImageData(0, 0, pw, ph).data, w: pw, h: ph };
+
+      // The frame keeps the image's own proportions; the pixels ride along.
+      var w = nw, h = nh;
       var d = 'M0 0H' + w + 'V' + h + 'H0Z';
-      loadItems([{ d: d, fill: 'none', stroke: 'none', strokeWidth: 0 }], file.name, img);
+      loadItems([{ d: d, fill: 'none', stroke: 'none', strokeWidth: 0 }], file.name, img, pixels);
       var L = Doc.selected(doc);
       if (L) {
         // An image on its own has nothing to show until an effect runs, so give
         // it the halftone straight away: that is what an image is here for.
-        Doc.effect(L, 'halftone').on = true;
+        // A traced photo has no colours of its own worth keeping, so the Fill
+        // control drives it. Halftone ignores this and uses its plates.
+        L.paint.useSourceColours = false;
+        var hp = Doc.effect(L, 'halftone');
+        hp.on = true;
+        // Frequency is cells across the artwork, so the same number means a
+        // very different dot on a 400px logo and a 4000px photo. Pick one that
+        // lands near a five pixel pitch, which is what a photo wants.
+        hp.params.frequency = Math.max(12, Math.min(500, Math.round(w / 5)));
         tool = 'halftone';
-        syncChrome();
+        syncPanels();
         markDirty(false);
       }
     };
