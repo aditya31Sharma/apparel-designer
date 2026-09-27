@@ -1,11 +1,11 @@
-/* Figma-ish chrome: dark, dense, icon-led. Text only where it carries meaning. */
+/* Apparel Designer. Dark, dense, named. Icons help you scan; the words carry
+ * the meaning, because "Patchy" is not a thing anybody guesses from a picture. */
 :root{
   --bg:#1e1e1e; --panel:#2c2c2c; --panel2:#383838; --line:#383838; --line2:#444;
   --ink:#e6e6e6; --ink2:#b3b3b3; --muted:#8c8c8c;
   --accent:#0d99ff; --accent-dim:#0d99ff33;
   --snap:#ff4d88; --field:#383838;
-  --grid:#282828; --grid10:#333; --axis:#3a4a5e;
-  --tb:36px; --rail:40px; --panelw:276px;
+  --tb:38px; --panelw:284px;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden}
@@ -15,44 +15,71 @@ body{background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
 button,input,select{font:inherit;color:inherit}
 svg{display:block}
 
-/* ---------- top toolbar ---------- */
+/* ---------- toolbar ---------- */
 header{height:var(--tb);flex:none;display:flex;align-items:center;gap:2px;
-  padding:0 8px;background:var(--panel);border-bottom:1px solid #000}
-.brand{display:flex;align-items:center;gap:7px;padding:0 8px 0 2px;margin-right:4px}
-.brand b{font-size:11.5px;font-weight:600;letter-spacing:.01em}
+  padding:0 8px;background:var(--panel);border-bottom:1px solid #000;
+  -webkit-app-region:drag}
+header button,header .tools,header .zoom,header .fname{-webkit-app-region:no-drag}
+body.desktop header{padding-left:78px}   /* room for the traffic lights */
+.brand{display:flex;align-items:center;gap:7px;padding:0 10px 0 2px;margin-right:2px}
+.brand b{font-size:11.5px;font-weight:600;letter-spacing:.01em;white-space:nowrap}
 .mark{width:18px;height:18px;border-radius:4px;background:var(--accent);
-  display:grid;place-items:center;color:#fff}
+  display:grid;place-items:center;color:#fff;flex:none}
 .mark svg{width:12px;height:12px}
 .sep{width:1px;height:18px;background:var(--line2);margin:0 6px;flex:none}
 .grow{flex:1}
 
 .tbtn{width:28px;height:28px;border:none;border-radius:5px;background:none;
-  color:var(--ink2);display:grid;place-items:center;cursor:pointer}
+  color:var(--ink2);display:grid;place-items:center;cursor:pointer;flex:none}
 .tbtn svg{width:16px;height:16px}
 .tbtn:hover{background:var(--panel2);color:var(--ink)}
 .tbtn.on{background:var(--accent);color:#fff}
 .tbtn.on:hover{background:var(--accent)}
-.tbtn[disabled]{opacity:.35;cursor:default}
-.tbtn[disabled]:hover{background:none;color:var(--ink2)}
+.tbtn:disabled{opacity:.3;cursor:default}
+.tbtn:disabled:hover{background:none;color:var(--ink2)}
 
-.fname{font-size:11px;color:var(--ink2);padding:0 8px;max-width:280px;
+/* the three tools, named because they are the whole product */
+.tools{display:flex;gap:2px;background:var(--field);border-radius:6px;padding:2px}
+.tool{height:26px;padding:0 10px 0 8px;border:none;border-radius:4px;background:none;
+  color:var(--ink2);display:flex;align-items:center;gap:6px;cursor:pointer;
+  white-space:nowrap;font-weight:500}
+.tool svg{width:15px;height:15px;flex:none}
+.tool:hover{color:var(--ink)}
+.tool.on{background:var(--accent);color:#fff}
+
+.fname{font-size:11px;color:var(--ink2);padding:0 8px;max-width:260px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .zoom{display:flex;align-items:center;gap:2px}
 .zoomval{min-width:46px;text-align:center;color:var(--ink2);
   font-variant-numeric:tabular-nums}
 
 /* ---------- layout ---------- */
 main{flex:1;display:flex;min-height:0}
-#stage{flex:1;position:relative;min-width:0;background:var(--bg);overflow:hidden}
-#stage svg#board{position:absolute;inset:0;width:100%;height:100%}
-#stage.pan{cursor:grabbing}
-#hud{position:absolute;left:10px;bottom:10px;color:var(--muted);font-size:10.5px;
-  font-variant-numeric:tabular-nums;background:#00000099;padding:3px 8px;
-  border-radius:5px;pointer-events:none}
+#stage{flex:1;position:relative;min-width:0;overflow:hidden}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#stage #overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#stage #overlay .handle,#stage #overlay .rotzone{pointer-events:auto}
 #drop{position:absolute;inset:10px;display:none;align-items:center;justify-content:center;
   background:var(--accent-dim);border:2px dashed var(--accent);border-radius:8px;
-  font-size:12px;color:#fff}
+  font-size:12px;color:#fff;pointer-events:none}
 #drop.on{display:flex}
+
+#empty{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;pointer-events:none;color:var(--muted)}
+#empty.gone{display:none}
+#empty .big{width:44px;height:44px;border-radius:10px;background:var(--panel2);
+  display:grid;place-items:center;color:var(--muted);margin-bottom:12px}
+#empty .big svg{width:24px;height:24px}
+#empty h1{font-size:13px;font-weight:600;color:var(--ink2);margin:0}
+#empty p{margin:4px 0 0;font-size:11.5px}
+#empty .hint{display:flex;gap:16px;margin-top:18px;font-size:11px}
+#empty .hint b{color:var(--ink2);font-weight:600}
+
+.err{position:absolute;left:10px;bottom:10px;right:10px;display:none;
+  background:#3a1c1c;border:1px solid #6b2b2b;color:#ffb4b4;
+  padding:6px 9px;border-radius:5px;font-size:11px;white-space:pre-wrap}
+.err.on{display:block}
 
 aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px solid #000;
   display:flex;flex-direction:column;min-height:0}
@@ -68,114 +95,111 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
   display:flex;align-items:center;gap:6px;letter-spacing:.005em}
 .sec h2 .grow{flex:1}
 
-/* a property row: icon, name, control, value. The name carries the meaning,
- * the icon is only there to scan by. */
-.pr{display:flex;align-items:center;gap:6px;height:26px;margin-bottom:3px}
+/* icon, name, control, readout */
+.pr{display:flex;align-items:center;gap:6px;min-height:26px;margin-bottom:3px}
 .pr:last-child{margin-bottom:0}
-.gi{width:22px;height:22px;flex:none;display:grid;place-items:center;
+.gi{width:20px;height:20px;flex:none;display:grid;place-items:center;
   color:var(--muted);border-radius:4px}
 .gi svg{width:15px;height:15px}
 .pr:hover .gi{color:var(--ink2)}
-.lbl{flex:none;width:64px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;
+.lbl{flex:none;width:72px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
 .pr:hover .lbl{color:var(--ink)}
 .lbl.grow{flex:1;width:auto}
+.lbl2{color:var(--muted);width:11px;flex:none;text-align:center}
+.scrub{cursor:ew-resize}
+.pr.pair{gap:4px}
+.pr.pair .num{width:100%;min-width:0;flex:1}
+
 .pr input[type=range]{flex:1;min-width:0;-webkit-appearance:none;height:2px;
   border-radius:2px;background:var(--line2);outline:none}
 .pr input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;
   border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 1px 2px #0008}
-.num{width:46px;flex:none;background:transparent;border:1px solid transparent;
+.num{width:52px;flex:none;background:transparent;border:1px solid transparent;
   border-radius:4px;padding:3px 5px;text-align:right;font-variant-numeric:tabular-nums;
   color:var(--ink2)}
+.num.wide{width:74px;text-align:left}
+.num.hex{width:70px;text-align:left;text-transform:lowercase}
 .num:hover{border-color:var(--line2)}
 .num:focus{border-color:var(--accent);outline:none;color:var(--ink);background:var(--field)}
 .swatch{width:22px;height:22px;flex:none;padding:0;border:1px solid var(--line2);
   border-radius:4px;background:none;cursor:pointer}
-.seg{display:flex;background:var(--field);border-radius:5px;padding:2px;gap:2px}
-.seg button{flex:1;height:22px;border:none;background:none;border-radius:3px;
-  color:var(--ink2);cursor:pointer;display:grid;place-items:center}
-.seg button svg{width:14px;height:14px}
-.seg button.on{background:#4a4a4a;color:var(--ink)}
-.chips{display:flex;gap:4px;flex-wrap:wrap}
-.chips button{background:var(--field);border:1px solid transparent;color:var(--ink2);
-  border-radius:4px;padding:3px 8px;cursor:pointer;font-size:10.5px}
-.chips button:hover{border-color:var(--line2);color:var(--ink)}
+.sel{flex:1;min-width:0;background:var(--field);border:1px solid transparent;
+  border-radius:4px;padding:3px 5px;color:var(--ink2);cursor:pointer}
+.sel:hover{border-color:var(--line2);color:var(--ink)}
 
-/* preset grid */
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}
-.preset{background:var(--field);border:1px solid transparent;border-radius:5px;
-  height:30px;cursor:pointer;display:grid;place-items:center}
-.preset:hover{border-color:var(--line2)}
-.preset.on{border-color:var(--accent);background:var(--accent-dim)}
-.preset svg{width:82%;height:18px;color:#d4d4d4}
-.preset.on svg{color:#fff}
+.lockbtn{width:22px;height:22px;border:none;border-radius:4px;background:none;
+  color:var(--muted);display:grid;place-items:center;cursor:pointer;flex:none}
+.lockbtn svg{width:13px;height:13px}
+.lockbtn.on{background:var(--accent);color:#fff}
 
-/* switch */
-.sw{width:26px;height:15px;flex:none;border-radius:99px;background:#555;
-  position:relative;cursor:pointer;transition:background .12s}
+.sw{width:26px;height:15px;border-radius:8px;background:#5a5a5a;position:relative;
+  cursor:pointer;flex:none;transition:background .12s}
 .sw::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;
   border-radius:50%;background:#fff;transition:transform .12s}
 .sw.on{background:var(--accent)}
 .sw.on::after{transform:translateX(11px)}
-.hidden-cb{position:absolute;opacity:0;pointer-events:none}
+.hidden-cb{display:none}
 
-.note{color:var(--muted);font-size:10px;margin-top:6px;line-height:1.5}
-.err{color:#ff8a8a;font-size:10.5px;margin-top:6px;display:none}
-.err.on{display:block}
-.foot{flex:none;padding:8px;border-top:1px solid var(--line);display:flex;gap:6px}
-.foot button{flex:1;height:28px;border:1px solid var(--line2);background:var(--field);
-  border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  gap:6px;color:var(--ink)}
-.foot button svg{width:14px;height:14px}
-.foot button:hover{border-color:#5a5a5a}
-.foot button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg{display:flex;background:var(--field);border-radius:5px;padding:2px;gap:2px}
+.seg button{flex:1;height:21px;border:none;background:none;border-radius:3px;
+  color:var(--ink2);cursor:pointer;display:grid;place-items:center;font-size:10.5px}
+.seg button svg{width:14px;height:14px}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:#4a4a4a;color:#fff}
 
-/* ---------- tooltip ---------- */
-#tip{position:fixed;z-index:99;background:#0d0d0d;color:#fff;border:1px solid #000;
-  padding:5px 8px;border-radius:5px;font-size:10.5px;line-height:1.45;max-width:210px;
-  pointer-events:none;opacity:0;transform:translateY(2px);transition:opacity .09s;
-  box-shadow:0 6px 18px #0009}
-#tip.on{opacity:1;transform:none}
-#tip b{display:block;font-weight:600;margin-bottom:1px}
-#tip span{color:#b9b9b9}
+.note{color:var(--muted);font-size:10.5px;line-height:1.5;margin:2px 0 7px}
 
-/* canvas backgrounds */
-#stage.bg-light{background:#f0f0f0;--grid:#e3e3e3;--grid10:#d4d4d4;--axis:#a8bdd4}
-#stage.bg-checker{background-color:#fff;
-  background-image:linear-gradient(45deg,#e8e8e8 25%,transparent 25%),
-    linear-gradient(-45deg,#e8e8e8 25%,transparent 25%),
-    linear-gradient(45deg,transparent 75%,#e8e8e8 75%),
-    linear-gradient(-45deg,transparent 75%,#e8e8e8 75%);
-  background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;
-  --grid:#dedede;--grid10:#cfcfcf;--axis:#a8bdd4}
-
-/* live preview tiles: dither styles and texture swatches, each captioned */
-.tiles{grid-template-columns:repeat(2,1fr);gap:5px}
-.tiles .preset{height:auto;padding:0;overflow:hidden;display:block;
-  place-items:stretch;background:none;border-radius:6px}
+/* captioned tiles */
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:4px}
+.tiles .preset{cursor:pointer;border-radius:6px;overflow:hidden;
+  outline:1px solid transparent;display:block}
 .tiles .thumb{height:38px;border-radius:5px 5px 0 0;overflow:hidden;
-  background:var(--field);display:block}
-.tiles .thumb svg,.tiles .thumb img{width:100%;height:100%;display:block;color:#d4d4d4}
+  background:var(--field);display:block;color:#d4d4d4}
+.tiles .thumb svg,.tiles .thumb img{width:100%;height:100%;display:block}
 .tiles .thumb img{object-fit:cover;opacity:.9}
+.tiles .thumb .glyph{width:100%;height:100%;display:grid;place-items:center}
+.tiles .thumb .glyph svg{width:18px;height:18px}
 .tiles .cap{display:block;padding:4px 5px 5px;background:var(--field);
   border-radius:0 0 5px 5px;color:var(--ink2);font-size:10.5px;text-align:center;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tiles .preset:hover .cap{color:var(--ink)}
+.tiles .preset.on{outline-color:var(--accent)}
 .tiles .preset.on .thumb,.tiles .preset.on .cap{background:var(--accent-dim)}
-.tiles .preset.on{outline:1px solid var(--accent)}
 .tiles .preset.on .cap{color:#fff}
-.tiles .preset.on .thumb svg,.tiles .preset.on .thumb img{color:#fff;opacity:1}
+.tiles .preset.on .thumb{color:#fff}
+.tiles .preset.on .thumb img{opacity:1}
 
-/* warp shape presets: glyph plus name, three across */
-.grid.named{grid-template-columns:repeat(3,1fr);gap:4px}
-.grid.named .preset{height:auto;padding:4px 2px 5px;display:block;place-items:stretch}
-.grid.named .preset svg{width:100%;height:16px;margin:0 auto 3px}
-.grid.named .nm{display:block;font-size:9.5px;color:var(--muted);text-align:center;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.grid.named .preset:hover .nm{color:var(--ink2)}
-.grid.named .preset.on .nm{color:#fff}
-button.wide{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-  height:26px;background:var(--field);border:1px solid var(--line2);border-radius:5px;
-  color:var(--ink);font:inherit;font-size:11px;cursor:pointer}
-button.wide svg{width:13px;height:13px;flex:none}
-button.wide:hover{border-color:var(--accent)}
+/* the warp shapes sit three across: the glyph carries most of the meaning */
+#panel-warp .tiles{grid-template-columns:repeat(3,1fr)}
+#panel-warp .tiles .thumb{height:26px;background:none;padding:2px 0}
+#panel-warp .tiles .thumb svg{color:var(--ink2)}
+#panel-warp .tiles .cap{background:none;font-size:9.5px;color:var(--muted);padding:0 2px 4px}
+#panel-warp .tiles .preset:hover .thumb svg{color:var(--ink)}
+#panel-warp .tiles .preset.on .thumb svg,#panel-warp .tiles .preset.on .cap{color:#fff}
+#panel-warp .tiles .preset.on{background:var(--accent-dim)}
+
+/* halftone dot shapes, six across two rows */
+#panel-halftone .tiles{grid-template-columns:repeat(3,1fr)}
+#panel-halftone .sec:nth-child(2) .tiles{grid-template-columns:repeat(2,1fr)}
+#panel-halftone .tiles .thumb .glyph svg{width:22px;height:22px}
+
+/* ---------- footer ---------- */
+.foot{flex:none;display:flex;gap:6px;padding:8px;border-top:1px solid #000;
+  background:var(--panel)}
+.foot button{flex:1;height:28px;border:none;border-radius:6px;background:var(--panel2);
+  color:var(--ink);display:flex;align-items:center;justify-content:center;gap:5px;
+  cursor:pointer;font-weight:500}
+.foot button svg{width:14px;height:14px}
+.foot button:hover{background:#464646}
+.foot button.pri{background:var(--accent);color:#fff}
+.foot button.pri:hover{background:#2aa5ff}
+
+/* ---------- tooltip ---------- */
+#tip{position:fixed;z-index:50;max-width:250px;background:#000;color:#fff;
+  border-radius:6px;padding:7px 9px;font-size:11px;line-height:1.45;
+  box-shadow:0 6px 22px #0009;pointer-events:none;opacity:0;transition:opacity .09s;
+  display:none}
+#tip.on{display:block;opacity:1}
+#tip b{display:block;font-weight:600;margin-bottom:2px}
+#tip span{color:#b9b9b9}

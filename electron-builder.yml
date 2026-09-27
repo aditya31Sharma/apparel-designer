@@ -1,0 +1,18 @@
+appId: com.tenzen.apparel-designer
+productName: Apparel Designer
+directories:
+  output: build
+files:
+  - index.html
+  - style.css
+  - src/**/*
+  - electron/**/*
+  - "!**/*.map"
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+    - zip
+  # Unsigned: the first launch needs right-click Open. Notarising means a paid
+  # developer account, which is not worth it for a tool with one user.
+  identity: null

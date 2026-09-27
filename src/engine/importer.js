@@ -79,11 +79,24 @@
   }
 
   /* Returns { paths, fill, width, height } or throws. */
+  var SVGNS = 'http://www.w3.org/2000/svg';
+
   function parse(markup) {
     var doc = new DOMParser().parseFromString(markup, 'image/svg+xml');
     if (doc.querySelector('parsererror')) throw new Error('That is not valid SVG');
     var svg = doc.querySelector('svg');
     if (!svg) throw new Error('No <svg> element found');
+
+    // Markup copied out of a file or written by hand often has no xmlns. Parsed
+    // that way every node lands in the null namespace as a plain Element with
+    // none of the SVG geometry methods, so put it back before going further.
+    if (svg.namespaceURI !== SVGNS) {
+      var fixed = markup.replace(/<svg\b/i, '<svg xmlns="' + SVGNS + '"');
+      doc = new DOMParser().parseFromString(fixed, 'image/svg+xml');
+      if (doc.querySelector('parsererror')) throw new Error('That is not valid SVG');
+      svg = doc.querySelector('svg');
+      if (!svg || svg.namespaceURI !== SVGNS) throw new Error('That is not valid SVG');
+    }
 
     var host = hidden();
     host.innerHTML = '';
@@ -135,4 +148,4 @@
   }
 
   root.SvgIn = { parse: parse, toPathData: toPathData };
-})(window);
+})(typeof self !== 'undefined' ? self : this);

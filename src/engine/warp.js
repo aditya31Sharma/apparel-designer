@@ -150,7 +150,7 @@
   }
 
   root.WarpPath = { parsePath: parsePath, tokenize: tokenize };
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- deformation ---------- */
 (function (root) {
@@ -412,4 +412,4 @@
 
   root.Warp = { PRESETS: PRESETS, warp: warp, bounds: bounds, mapPoint: mapPoint,
     byId: BY_ID, DEFAULT_CORNERS: DEFAULT_CORNERS };
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);

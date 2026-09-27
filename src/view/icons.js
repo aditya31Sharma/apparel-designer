@@ -7,6 +7,33 @@
       d + (extra || '') + '</svg>';
   };
   root.ICON = {
+    halftone:P('<circle cx="4" cy="4" r="2.4" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="2.9" fill="currentColor" stroke="none"/><circle cx="14" cy="7" r=".9" fill="currentColor" stroke="none"/><circle cx="7" cy="14" r=".9" fill="currentColor" stroke="none"/>'),
+    lock:    P('<rect x="3.5" y="7" width="9" height="6.5" rx="1.3"/><path d="M5.8 7V5.2a2.2 2.2 0 014.4 0V7"/>'),
+    rotate:  P('<path d="M13 8a5 5 0 11-1.6-3.7"/><path d="M13.3 2v3h-3"/>'),
+    opacity: P('<circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor" stroke="none"/>'),
+    blend:   P('<circle cx="6.2" cy="8" r="4"/><circle cx="9.8" cy="8" r="4"/>'),
+    flipH:   P('<path d="M8 2v12"/><path d="M6 5L2.5 8 6 11z" fill="currentColor"/><path d="M10 5l3.5 3L10 11z" fill="currentColor"/>'),
+    flipV:   P('<path d="M2 8h12"/><path d="M5 6L8 2.5 11 6z" fill="currentColor"/><path d="M5 10l3 3.5 3-3.5z" fill="currentColor"/>'),
+    pos:     P('<path d="M8 2v12M2 8h12" opacity=".4"/><circle cx="8" cy="8" r="2.2"/>'),
+    sizeIcon:P('<rect x="2.5" y="4.5" width="11" height="7" rx="1"/><path d="M5 7.2h6M5 9h4" opacity=".45"/>'),
+    freq:    P('<path d="M2 8h1.6M5.2 8h1.6M8.4 8h1.6M11.6 8h1.6"/><path d="M2 4.5h2.6M6 4.5h2.6M10 4.5h2.6M2 11.5h2.6M6 11.5h2.6M10 11.5h2.6" opacity=".45"/>'),
+    dot:     P('<circle cx="8" cy="8" r="4.2" fill="currentColor" stroke="none"/>'),
+    dotSq:   P('<rect x="4" y="4" width="8" height="8" fill="currentColor" stroke="none"/>'),
+    dotEl:   P('<ellipse cx="8" cy="8" rx="5.2" ry="2.9" fill="currentColor" stroke="none"/>'),
+    dotLn:   P('<rect x="2" y="6.4" width="12" height="3.2" fill="currentColor" stroke="none"/>'),
+    dotX:    P('<path d="M6.4 3h3.2v3.4H13v3.2H9.6V13H6.4V9.6H3V6.4h3.4z" fill="currentColor" stroke="none"/>'),
+    dotDi:   P('<path d="M8 2.6L13.4 8 8 13.4 2.6 8z" fill="currentColor" stroke="none"/>'),
+    gain:    P('<path d="M2.5 12.5c3 0 4-9 11-9"/>'),
+    paper:   P('<path d="M3.5 2.5h6L12.5 5.5v8h-9z"/><path d="M9.5 2.5v3h3" opacity=".5"/><path d="M5.5 8.5h5M5.5 10.8h3" opacity=".4"/>'),
+    inkDrop: P('<path d="M8 2.2c2.4 3 4 4.9 4 7a4 4 0 11-8 0c0-2.1 1.6-4 4-7z"/>'),
+    gcr:     P('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M8 2.5v11" opacity=".5"/>'),
+    mode:    P('<circle cx="5.6" cy="6.4" r="3.4"/><circle cx="10.4" cy="6.4" r="3.4"/><circle cx="8" cy="10.2" r="3.4"/>'),
+    cutBg:   P('<path d="M3 3l10 10M13 3L3 13" opacity=".35"/><path d="M8 2.6a5.4 5.4 0 110 10.8 5.4 5.4 0 010-10.8z"/>'),
+    undo:    P('<path d="M3 7h6.5a3.5 3.5 0 010 7H6"/><path d="M5.6 4.4L3 7l2.6 2.6"/>'),
+    redo:    P('<path d="M13 7H6.5a3.5 3.5 0 000 7H10"/><path d="M10.4 4.4L13 7l-2.6 2.6"/>'),
+    layers:  P('<path d="M8 2.5l5.5 3L8 8.5 2.5 5.5z"/><path d="M2.5 8.5L8 11.5l5.5-3" opacity=".5"/><path d="M2.5 11.2L8 14.2l5.5-3" opacity=".3"/>'),
+    trash:   P('<path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.6 8.2a1 1 0 001 .8h2.8a1 1 0 001-.8L11 4.5"/>'),
+    eye:     P('<path d="M1.8 8S4.2 4 8 4s6.2 4 6.2 4-2.4 4-6.2 4S1.8 8 1.8 8z"/><circle cx="8" cy="8" r="1.8"/>'),
     open:    P('<path d="M2 4.5A1.5 1.5 0 013.5 3h2.6l1.2 1.6h5.2A1.5 1.5 0 0114 6.1v5.4A1.5 1.5 0 0112.5 13h-9A1.5 1.5 0 012 11.5z"/>'),
     paste:   P('<path d="M6 2.5h4v2H6z"/><path d="M10 3.5h1.5A1.5 1.5 0 0113 5v7.5A1.5 1.5 0 0111.5 14h-7A1.5 1.5 0 013 12.5V5a1.5 1.5 0 011.5-1.5H6"/>'),
     image:   P('<rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><circle cx="6" cy="6.75" r="1"/><path d="M3 11l3-2.6 2.2 1.8L10.6 8l2.4 2.3"/>'),
@@ -50,4 +77,4 @@
     tone:    P('<circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor" stroke="none"/>'),
     cutoff:  P('<path d="M2.5 8h11"/><circle cx="10" cy="8" r="2" fill="currentColor" stroke="none"/>')
   };
-})(window);
+})(typeof self !== 'undefined' ? self : this);

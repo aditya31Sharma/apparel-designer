@@ -59,4 +59,4 @@
   }
 
   root.Snap = { apply: apply };
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);

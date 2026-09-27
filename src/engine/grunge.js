@@ -126,7 +126,7 @@
     mulberry32: mulberry32, makeNoise: makeNoise, fbm: fbm,
     edt2d: edt2d, sdf: sdf
   };
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- mask to contours ---------- */
 (function (root) {
@@ -271,7 +271,7 @@
   G.rdp = rdp;
   G.chaikin = chaikin;
   G.ringsToPath = ringsToPath;
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- textures ---------- */
 /* Photoshop clips a stack of grunge scans over the letterform and the dark
@@ -384,7 +384,7 @@
   G.stretch = stretch;
   G.smoothstep = smoothstep;
   G.ridged = ridged;
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- blur then threshold ---------- */
 /* The melt pass. Blurring coverage and re-cutting at a level is the vector
@@ -435,7 +435,7 @@
   }
 
   G.melt = melt;
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- the effect ---------- */
 (function (root) {
@@ -609,15 +609,19 @@
 
   G.DEFAULTS = DEFAULTS;
   G.erode = erode;
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);
 
 /* ---------- browser side: artwork in, paths out ---------- */
 (function (root) {
   'use strict';
-  if (typeof document === 'undefined') return;
+  var hasCanvas = typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined';
+  if (!hasCanvas) return;
   var G = root.Grunge;
 
+  /* Workers get an OffscreenCanvas, the main thread gets a real element. The
+   * erosion has to run off the main thread, so it cannot assume a document. */
   function canvasOf(w, h) {
+    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
     var c = document.createElement('canvas');
     c.width = w; c.height = h;
     return c;
@@ -691,4 +695,4 @@
   G.maskFromPaths = maskFromPaths;
   G.masksFromImage = masksFromImage;
   G.fromPaths = fromPaths;
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof module !== 'undefined' ? module.exports : self);
