@@ -84,6 +84,49 @@
 
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
+  /* Ink demand for a one or two colour print: how dark the pixel is, by eye.
+   *
+   * Separating to CMYK and printing only the black plate is wrong here. Black
+   * generation is 1 - max(r,g,b), so a saturated red has no black in it at all
+   * and a red logo comes out as blank paper. A one-colour print wants
+   * perceptual darkness, which is what luminance gives. */
+  function toneOf(rgba, w, h) {
+    var n = w * h;
+    var t = new Float32Array(n);
+    for (var i = 0, p = 0; i < n; i++, p += 4) {
+      var a = rgba[p + 3] / 255;
+      var r = (rgba[p] / 255) * a + (1 - a);
+      var g = (rgba[p + 1] / 255) * a + (1 - a);
+      var b = (rgba[p + 2] / 255) * a + (1 - a);
+      t[i] = 1 - (0.2126 * r + 0.7152 * g + 0.0722 * b);
+    }
+    return t;
+  }
+
+  /* Two inks from one tone.
+   *
+   * The colour carries the whole range, the dark ink only comes in once the
+   * tone passes the split, and they overprint in the shadows. That is what a
+   * risograph or a two-colour screen print actually does, and it is why a
+   * duotone keeps its colour in the midtones instead of turning into a mono
+   * screen with a tint. */
+  function duotoneOf(rgba, w, h, split) {
+    var t = toneOf(rgba, w, h);
+    var n = t.length;
+    var dark = new Float32Array(n), colour = new Float32Array(n);
+    var s = clamp01(split === undefined ? 0.45 : split);
+    var span = Math.max(0.05, 1 - s);
+    for (var i = 0; i < n; i++) {
+      var v = t[i];
+      var d = clamp01((v - s) / span);
+      dark[i] = d * d * (3 - 2 * d);            // eased in, so shadows arrive smoothly
+      // The colour thins where the dark ink takes over, so the two together
+      // do not pile up past what the paper can hold.
+      colour[i] = clamp01(v) * (1 - 0.45 * dark[i]);
+    }
+    return { dark: dark, colour: colour };
+  }
+
   /* ---------- summed-area table ---------- */
 
   /* sat has one extra row and column of zeros, so a box sum never needs a bounds
@@ -356,16 +399,33 @@
     var p = opts(options);
     var angles = options && options.angles ? options.angles : ANGLE_PRESETS.classic;
     var on = options && options.channels ? options.channels : { c: 1, m: 1, y: 1, k: 1 };
-    var sep = separate(rgba, w, h, p);
+    var mode = (options && options.mode) || 'cmyk';
+
+    // One and two colour prints work from perceptual tone, not from the CMYK
+    // black plate, which has no black in a saturated colour at all.
+    var planes, order;
+    if (mode === 'mono') {
+      planes = { k: toneOf(rgba, w, h) };
+      order = [{ key: 'k', label: 'Black', idx: 3 }];
+    } else if (mode === 'duotone') {
+      var duo = duotoneOf(rgba, w, h, options && options.duotoneSplit);
+      planes = { k: duo.dark, m: duo.colour };
+      order = [{ key: 'm', label: 'Colour', idx: 1 }, { key: 'k', label: 'Black', idx: 3 }];
+    } else {
+      planes = separate(rgba, w, h, p);
+      order = CHANNELS.map(function (c, i) {
+        return { key: c.key, label: c.label, idx: i };
+      }).filter(function (c) { return on[c.key]; });
+    }
 
     var out = [], total = 0;
-    for (var i = 0; i < CHANNELS.length; i++) {
-      var ch = CHANNELS[i];
-      if (!on[ch.key]) continue;
-      var sat = buildSat(sep[ch.key], w, h, satFor((w + 1) * (h + 1)));
-      var dots = screenChannel(sat, w, h, angles[ch.key] || 0, p, i * 1013);
+    for (var i = 0; i < order.length; i++) {
+      var ch = order[i];
+      var defn = CHANNELS[ch.idx];
+      var sat = buildSat(planes[ch.key], w, h, satFor((w + 1) * (h + 1)));
+      var dots = screenChannel(sat, w, h, angles[ch.key] || 0, p, ch.idx * 1013);
       total += dots.length / STRIDE;
-      out.push({ key: ch.key, label: ch.label, colour: ch.colour, dots: dots });
+      out.push({ key: ch.key, label: ch.label, colour: defn.colour, dots: dots });
     }
     return {
       channels: out,
@@ -504,6 +564,8 @@
     CHANNELS: CHANNELS,
     ANGLE_PRESETS: ANGLE_PRESETS,
     separate: separate,
+    toneOf: toneOf,
+    duotoneOf: duotoneOf,
     buildSat: buildSat,
     releaseScratch: function () { scratch = { n: 0, planes: null, sat: null, satN: 0 }; },
     boxMean: boxMean,

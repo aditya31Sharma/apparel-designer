@@ -25,25 +25,29 @@
       smooth: true,
       corners: null            // null means the untouched rectangle
     },
-    run: function (input, p) {
+    run: function (input, p, ctx) {
+      // A photo carries a placeholder rectangle, not an outline, so bending it
+      // would just bend the frame. Trace the picture first and bend that.
+      var items = needsTrace(input, ctx) ? ctx.traceImage(input, p) : input.items;
+      if (!items || !items.length) return null;
       var corners = p.corners || W.DEFAULT_CORNERS;
       var opts = {
         preset: p.preset, strength: p.strength, smooth: p.smooth, corners: corners
       };
-      var items = [], n = 0;
-      input.items.forEach(function (it) {
+      var out = [], n = 0;
+      items.forEach(function (it) {
         var parts = W.warp([Geom.itemPathData(it)], input.bbox, opts);
         if (!parts.length) return;
-        items.push({
+        out.push({
           d: parts.join(' '), fill: it.fill, stroke: it.stroke,
           strokeWidth: it.strokeWidth
         });
         n++;
       });
-      if (!items.length) return null;
+      if (!out.length) return null;
       return {
-        items: items,
-        bbox: W.bounds(items.map(function (i) { return i.d; })),
+        items: out,
+        bbox: W.bounds(out.map(function (i) { return i.d; })),
         matte: input.matte,
         stats: { shapes: n }
       };
@@ -72,9 +76,7 @@
       if (!ctx.maskFromPaths) return null;
       // A photo has no outline to erode, so trace its dark areas into one first.
       // Without this the dither would faithfully erode the bounding rectangle.
-      var items = input.pixels && ctx.traceImage
-        ? ctx.traceImage(input, p)
-        : input.items;
+      var items = needsTrace(input, ctx) ? ctx.traceImage(input, p) : input.items;
       if (!items || !items.length) return null;
       var s = p.scale || 1;
       var o = {
@@ -163,6 +165,7 @@
       angles: { c: 15, m: 75, y: 0, k: 45 },
       channels: { c: true, m: true, y: true, k: true },
       duotone: ['#1b1b1b', '#e5352b'],
+      duotoneSplit: 0.45,
       paper: '#ffffff',                          // ground the ink multiplies onto
       sampleScale: 1,                            // raster resolution multiplier
       preset: ''
@@ -199,7 +202,8 @@
         paperFibre: p.paperFibre, inkTexture: p.inkTexture,
         gcr: p.mode === 'mono' ? 1 : p.gcr,
         minDot: p.minDot, seed: p.seed,
-        angles: p.angles, channels: channels
+        angles: p.angles, channels: channels,
+        mode: p.mode, duotoneSplit: p.duotoneSplit
       });
 
       var msScreen = Math.round(now() - tS);
@@ -235,6 +239,14 @@
     }
   });
 
+  /* True while the layer is still carrying the placeholder rectangle a photo
+   * arrives with. Once any effect has traced or bent it, the items are real
+   * outlines and must not be thrown away and re-traced. */
+  function needsTrace(input, ctx) {
+    return !!(input.pixels && ctx && ctx.traceImage &&
+              input.items.length && input.items.every(function (i) { return i.frame; }));
+  }
+
   /* Pitch to screen cells across the artwork, which is what the engine screens
    * on. Clamped so a tiny pitch on a huge canvas cannot ask for ten million
    * dots and a huge pitch cannot ask for none. */
@@ -244,6 +256,9 @@
     return Math.max(6, Math.min(900, Math.round(w / pitch)));
   }
 
+  /* Only meaningful in CMYK. Mono and duotone build their own planes from
+   * perceptual tone, because the black plate of a saturated colour is empty and
+   * a red logo would print as blank paper. */
   function channelsFor(p) {
     if (p.mode === 'mono') return { c: 0, m: 0, y: 0, k: 1 };
     if (p.mode === 'duotone') return { c: 0, m: 1, y: 0, k: 1 };

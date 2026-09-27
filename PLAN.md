@@ -335,6 +335,44 @@ Named so it is a decision rather than a surprise:
 
 ---
 
+## 11. What actually got built, and where the plan was wrong
+
+Written after the fact, because a plan that is never marked up against reality is
+just a wish.
+
+**Held up.** The document model, with the effect stack running inside a frame the
+effects never see. Position, size, rotation, opacity and paint survive every effect,
+which was the point and is now asserted by the suite. The effect registry made the
+third effect a registration and a panel spec and nothing else. The three-tier
+viewport holds 60fps at Retina density with thirty thousand dots on screen.
+
+**Wrong about SharedArrayBuffer, twice.** The plan said it was the decisive reason
+for a desktop build. Then, mid-build, I corrected that to "Chromium will not grant
+isolation to a custom scheme, and transferables already avoid the copy." Both
+statements were half right. Serving the app from a loopback HTTP origin does get
+cross-origin isolation, SharedArrayBuffer is available, and the erosion pool uses it.
+The correction to the correction is in section 6.
+
+**Wrong about where the time goes.** The plan blamed string building and main-thread
+compute. Those were real but small. The three things that actually cost seconds were
+a GPU readback after drawing, `Path2D` being quadratic in subpath count, and a
+preview scheduling bug that computed every preview twice. None of them were in the
+plan, and none would have been found without measuring.
+
+**Wrong about native inference.** The plan assumed `onnxruntime-node` would run in
+the Electron main process. It loads there and crashes the instant it runs. Inference
+moved to a spawned Node process, which is better anyway: a fault in native code can
+no longer take the window down.
+
+**Missed entirely.** Two bugs of the same shape, both about a parameter being
+relative to the artwork when it needed to be absolute: halftone frequency as cells
+across, and resampling that assumed the working bitmap was never larger than the
+source. Both only showed up once the effects were run over real images of different
+sizes, which is why `electron/sheet.js` exists.
+
+**Out of scope items still out of scope.** Multiple layers, undo across effect
+params, Windows and Linux, notarisation, a text tool.
+
 ## 10. The assignment
 
 Take one real Tenzen print file through the whole chain the day it lands: import

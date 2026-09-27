@@ -42,8 +42,13 @@
     var w = Math.max(4, Math.round(b.width * scale));
     var h = Math.max(4, Math.round(b.height * scale));
 
+    // Once an effect has produced real outlines the photo's own pixels are
+    // stale: screening them would throw away the bend that was just applied.
+    var stillTheFrame = input.items && input.items.length &&
+      input.items.every(function (i) { return i.frame; });
+
     var data;
-    if (input.pixels) {
+    if (input.pixels && (stillTheFrame || !input.items.length)) {
       /* Straight from the numbers. Routing a photo through a canvas only to
        * read it back again cost a hundred and ninety milliseconds a frame:
        * drawing puts the surface on the GPU and getImageData then has to stall
@@ -149,31 +154,6 @@
     }
   }
 
-  /* Bitmap to flat paths, for tracing a photo into vector ink. */
-  function levelsFromBitmap(bitmap, maxPx, levels, threshold) {
-    var scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
-    var w = Math.max(8, Math.round(bitmap.width * scale));
-    var h = Math.max(8, Math.round(bitmap.height * scale));
-    var c = canvasOf(w, h);
-    var g = c.getContext('2d', { willReadFrequently: true });
-    g.drawImage(bitmap, 0, 0, w, h);
-    var data = g.getImageData(0, 0, w, h).data;
-
-    var lum = new Float32Array(w * h);
-    for (var i = 0, p = 0; i < lum.length; i++, p += 4) {
-      var a = data[p + 3] / 255;
-      var l = (0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2]) / 255;
-      lum[i] = l * a + (1 - a);
-    }
-    var out = [];
-    for (var k = 0; k < levels; k++) {
-      var cut = threshold * (k + 1) / levels;
-      var m = new Uint8Array(w * h);
-      for (i = 0; i < m.length; i++) m[i] = lum[i] <= cut ? 1 : 0;
-      out.push(m);
-    }
-    return { masks: out, w: w, h: h };
-  }
 
   /* A photo into outlines, so the erosion has something with an edge to chew.
    * Split into tone bands, threshold each, trace with the same marching-squares
@@ -249,7 +229,6 @@
     canvasOf: canvasOf,
     rasterize: rasterize,
     resample: resample,
-    applyMatte: applyMatte,
-    levelsFromBitmap: levelsFromBitmap
+    applyMatte: applyMatte
   };
 })(typeof self !== 'undefined' ? self : this);

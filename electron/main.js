@@ -28,7 +28,8 @@ let win = null;
  * that is not a GET for a file inside the app directory. */
 
 const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
+  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
+  '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
   '.woff2': 'font/woff2', '.wasm': 'application/wasm'
@@ -49,6 +50,27 @@ function startServer() {
         res.writeHead(400); res.end('bad path'); return;
       }
       if (rel === '/' || rel === '') rel = '/index.html';
+
+      // The background model lives in the app's data directory, not in the
+      // bundle: it is 213MB and is fetched once on first use. Expose just that
+      // one directory so the page can load it like any other asset.
+      if (rel.startsWith('/model/')) {
+        const name = path.basename(rel);
+        const file = path.join(app.getPath('userData'), 'models', name);
+        try {
+          const body = await fs.readFile(file);
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': body.length,
+            'Cross-Origin-Resource-Policy': 'same-origin',
+            'Cache-Control': 'no-store'
+          });
+          res.end(req.method === 'HEAD' ? undefined : body);
+        } catch (err) {
+          res.writeHead(404); res.end('no model');
+        }
+        return;
+      }
 
       // Never serve anything outside the app directory, whatever the URL says.
       const file = path.normalize(path.join(ROOT, rel));
@@ -235,6 +257,19 @@ app.whenReady().then(async () => {
   await startServer();
   createWindow();
   buildMenu();
+  // A stalled suite should say where it stalled rather than time out silently.
+  if (SUITE) {
+    const tick = setInterval(async () => {
+      try {
+        const p = await win.webContents.executeJavaScript('JSON.stringify(window.__suiteProgress||null)');
+        if (p && p !== 'null') {
+          require('fs').writeFileSync(path.join(ROOT, 'build', 'suite-progress.json'), p);
+        }
+      } catch (e) { /* window gone */ }
+    }, 3000);
+    app.on('before-quit', () => clearInterval(tick));
+  }
+
   if (SELFTEST || BENCH || SUITE || SHEET) {
     const mod = SHEET ? './sheet.js' : SUITE ? './suite.js' : BENCH ? './bench.js' : './selftest.js';
     require(mod).run(win, app, path.join(ROOT, 'build'))

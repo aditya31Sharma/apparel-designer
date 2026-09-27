@@ -16,9 +16,36 @@ const SCRIPT = `(async function(){
   var Doc = window.Doc, Effects = window.Effects;
   var results = [], failures = [];
 
+  function beat(where){
+    window.__suiteProgress = {
+      at: where, done: results.length, failed: failures.length, t: Date.now(),
+      err: (document.getElementById('err').textContent || '').slice(0, 120),
+      state: window.App.debug ? window.App.debug() : null
+    };
+  }
+
+  /* Anything that takes longer than this has gone wrong, and a run that hangs
+   * reports nothing at all, which is worse than a run that reports a stall.
+   * Every await goes through here so the suite always produces a verdict. */
+  function withDeadline(promise, ms, label){
+    return Promise.race([
+      promise,
+      new Promise(function (resolve) {
+        setTimeout(function () {
+          failures.push('STALLED at ' + label + ' after ' + ms + 'ms');
+          results.push({ name: 'stall/' + label, pass: false, detail: ms + 'ms' });
+          resolve('stalled');
+        }, ms);
+      })
+    ]);
+  }
+
   function check(name, cond, detail){
     results.push({ name: name, pass: !!cond, detail: detail === undefined ? '' : String(detail) });
     if (!cond) failures.push(name + (detail ? ' :: ' + detail : ''));
+    // Kept where the harness can read it, so a run that stalls says where it
+    // stalled instead of just timing out with nothing.
+    beat(name);
     return !!cond;
   }
 
@@ -32,14 +59,19 @@ const SCRIPT = `(async function(){
     return window.App.selected();
   }
 
+  /* Resolves once, on whichever comes first: a result or the budget.
+   *
+   * The earlier version gated its timeout on the shared window.__onResult still
+   * being set. If a second wait overwrote that slot and then consumed it, the
+   * first promise's timeout found nothing there and never resolved, so the run
+   * hung on a promise nobody could settle. Own the flag locally instead. */
   function recompute(budgetMs){
     return new Promise(function(resolve){
-      var t0 = performance.now();
-      window.__onResult = function(){ resolve(Math.round(performance.now()-t0)); };
+      var t0 = performance.now(), settled = false;
+      function finish(v){ if (settled) return; settled = true; resolve(v); }
+      window.__onResult = function(){ finish(Math.round(performance.now() - t0)); };
       window.App.markDirty(false);
-      setTimeout(function(){
-        if (window.__onResult){ window.__onResult = null; resolve(-1); }
-      }, budgetMs || 30000);
+      setTimeout(function(){ finish(-1); }, budgetMs || 20000);
     });
   }
 
@@ -48,6 +80,7 @@ const SCRIPT = `(async function(){
 
   /* One case: set it up, recompute, and assert the result is real. */
   async function runCase(label, setup, budget){
+    beat('running ' + label);
     clearErr();
     setup();
     window.App.syncPanels();
@@ -206,6 +239,33 @@ const SCRIPT = `(async function(){
     };})(shapes[i]), 4000);
   }
 
+  /* Warping a photo used to do nothing: the layer carries a placeholder
+   * rectangle rather than an outline, so the bend landed on the frame and the
+   * next effect went back to the pixels and lost it. */
+  var photoWarp = await runCase('photo/warp', function(){
+    offAll(P);
+    Doc.effect(P,'warp').on = true;
+    Doc.effect(P,'warp').params.preset = 'arc';
+    Doc.effect(P,'warp').params.strength = 70;
+  }, 6000);
+  /* One shape is correct here: tracing a photo gives a single silhouette. What
+   * matters is that the outline is the picture and not the frame, so compare
+   * its point count against what a four-corner rectangle would have. */
+  check('warp on a photo bends the picture, not the frame', (function(){
+    var r = window.App.debug();
+    var svg = window.App.svgText(false);
+    var pts = (svg.match(/[ML]/g) || []).length;
+    window.__warpPts = pts;
+    return pts > 200;
+  })(), (window.__warpPts || 0) + ' path commands');
+
+  await runCase('photo/warp+halftone', function(){
+    offAll(P);
+    Doc.effect(P,'warp').on = true;
+    Doc.effect(P,'halftone').on = true;
+    Doc.effect(P,'halftone').params.pitch = 8;
+  }, 9000);
+
   var photoDither = await runCase('photo/dither', function(){
     offAll(P);
     Doc.effect(P,'dither').on = true;
@@ -283,37 +343,129 @@ const SCRIPT = `(async function(){
   window.App.doc().layers = [P];
   window.App.doc().selection = P.id;
 
-  // ---- background removal falls back cleanly ----
+  // ---- background removal ----
   clearErr();
   var st = await window.desktop.backgroundStatus();
   check('background model status reachable', !!st, JSON.stringify(st));
 
+  if (st && st.ready) {
+    offAll(P);
+    var tBg = performance.now();
+    document.getElementById('removeBg').click();
+    for (i = 0; i < 180; i++){ await wait(500); if (P.matte) break; }
+    var bgMs = Math.round(performance.now() - tBg);
+    if (check('background removal produces a matte', !!P.matte, bgMs + 'ms')) {
+      var mm = P.matte, lit = 0;
+      for (i = 0; i < mm.mask.length; i++) if (mm.mask[i] > 128) lit++;
+      var cornerAvg = (mm.mask[0] + mm.mask[mm.w-1] +
+                       mm.mask[(mm.h-1)*mm.w] + mm.mask[mm.w*mm.h-1]) / 4;
+      check('matte keeps the subject', lit / mm.mask.length > 0.15 && lit / mm.mask.length < 0.95,
+        (lit/mm.mask.length*100).toFixed(1) + '%');
+      check('matte drops the corners', cornerAvg < 40, cornerAvg.toFixed(1));
+      check('matte centre is opaque', mm.mask[((mm.h>>1)*mm.w)+(mm.w>>1)] > 180,
+        mm.mask[((mm.h>>1)*mm.w)+(mm.w>>1)]);
+      check('background removal under 30s', bgMs < 30000, bgMs + 'ms');
+      check('background removal used the model', mm.source === 'model', mm.source);
+
+      // and the matte has to actually reach the ink
+      Doc.effect(P,'halftone').on = true;
+      await recompute();
+      check('halftone still runs with a matte', /dots/.test(document.getElementById('stats').textContent),
+        document.getElementById('stats').textContent);
+      P.matte = null;
+      await recompute();
+    }
+  } else {
+    check('background model absent, reported honestly', true, JSON.stringify(st));
+  }
+
+  /* Round trip. An export that cannot be opened again is not an export, and
+   * the importer and the exporter are the two halves most likely to drift. */
+  offAll(P);
+  Doc.effect(P,'halftone').on = true;
+  // Coarse on purpose: re-importing expands every arc into a polyline, so a
+  // fine screen turns a 1MB export into tens of megabytes of points. The
+  // round trip is what is being checked here, not the throughput.
+  Doc.effect(P,'halftone').params.pitch = 22;
+  await recompute();
+  var beforeSvg = window.App.svgText(false);
+  var beforeDots = window.__lastHT ? window.__lastHT.dots : 0;
+  check('halftone export is not empty', beforeSvg.length > 1000, beforeSvg.length + ' bytes');
+  check('halftone export size is sane for the dot count',
+    beforeSvg.length < beforeDots * 140,
+    Math.round(beforeSvg.length/1024) + 'KB for ' + beforeDots + ' dots');
+
+  window.App.loadMarkup(beforeSvg, 'roundtrip.svg');
+  await wait(1200);
+  var R = window.App.selected();
+  check('an exported halftone can be opened again', !!R && R.source.items.length > 0,
+    R ? R.source.items.length + ' items' : 'nothing');
+  if (R) {
+    var rb = R.source.bbox;
+    check('round trip keeps its proportions',
+      Math.abs((rb.width / rb.height) - 1) < 0.08,
+      (rb.width / rb.height).toFixed(3));
+    await recompute();
+    check('round trip renders without error', !err(), err());
+  }
+
+  // the dither's outlines have to survive the same trip
+  window.App.doc().layers = [P];
+  window.App.doc().selection = P.id;
+  offAll(P);
+  Doc.effect(P,'dither').on = true;
+  Object.assign(Doc.effect(P,'dither').params,
+    JSON.parse(JSON.stringify(window.DITHER_PRESETS.charcoal.params)));
+  await recompute();
+  var dSvg = window.App.svgText(false);
+  window.App.loadMarkup(dSvg, 'roundtrip2.svg');
+  await wait(1200);
+  var R2 = window.App.selected();
+  check('an exported dither can be opened again', !!R2 && R2.source.items.length > 0,
+    R2 ? R2.source.items.length + ' items' : 'nothing');
+
+  window.App.doc().layers = [P];
+  window.App.doc().selection = P.id;
+  await withDeadline(recompute(), 25000, 'restore after round trip');
+
   // ---- interaction budget ----
-  offAll(P); Doc.effect(P,'halftone').on = true; await recompute();
+  beat('halftone settle');
+  offAll(P);
+  Doc.effect(P,'halftone').on = true;
+  await withDeadline(recompute(), 25000, 'halftone settle');
   var lat = [];
   for (i = 0; i < 8; i++){
+    beat('halftone slider ' + i);
     var t0 = performance.now();
-    await new Promise(function(resolve){
-      window.__onResult = resolve;
+    await withDeadline(new Promise(function(resolve){
+      var settled = false;
+      function finish(){ if (settled) return; settled = true; resolve(); }
+      window.__onResult = finish;
       Doc.effect(P,'halftone').params.inkDensity = 0.7 + i*0.03;
       window.App.markDirty(true);
-      setTimeout(resolve, 9000);
-    });
+      setTimeout(finish, 9000);
+    }), 12000, 'halftone slider ' + i);
     lat.push(Math.round(performance.now()-t0));
   }
   lat.sort(function(a,b){return a-b;});
   check('halftone slider under 180ms', lat[4] < 180, 'median ' + lat[4] + 'ms');
 
-  offAll(P); Doc.effect(P,'dither').on = true; await recompute();
+  beat('dither settle');
+  offAll(P);
+  Doc.effect(P,'dither').on = true;
+  await withDeadline(recompute(), 25000, 'dither settle');
   var lat2 = [];
   for (i = 0; i < 8; i++){
+    beat('dither slider ' + i);
     var t1 = performance.now();
-    await new Promise(function(resolve){
-      window.__onResult = resolve;
+    await withDeadline(new Promise(function(resolve){
+      var settled = false;
+      function finish(){ if (settled) return; settled = true; resolve(); }
+      window.__onResult = finish;
       Doc.effect(P,'dither').params.roughness = 5 + i*0.4;
       window.App.markDirty(true);
-      setTimeout(resolve, 9000);
-    });
+      setTimeout(finish, 9000);
+    }), 12000, 'dither slider ' + i);
     lat2.push(Math.round(performance.now()-t1));
   }
   lat2.sort(function(a,b){return a-b;});
@@ -342,6 +494,7 @@ const SCRIPT = `(async function(){
     });
   }
   var rr = canvas.getBoundingClientRect();
+  beat('pan frame rate');
   var f = await frames(90, function(){
     canvas.dispatchEvent(new WheelEvent('wheel',{deltaX:16,deltaY:6,ctrlKey:false,bubbles:true,cancelable:true,clientX:rr.left+300,clientY:rr.top+300}));
   });
@@ -350,8 +503,10 @@ const SCRIPT = `(async function(){
   // ---- memory does not run away ----
   var mem0 = performance.memory ? performance.memory.usedJSHeapSize : 0;
   for (i = 0; i < 25; i++){
-    Doc.effect(P,'halftone').params.frequency = 150 + (i % 7) * 12;
-    await recompute();
+    beat('heap loop ' + i);
+    if (i % 5 === 0) await wait(0);
+    Doc.effect(P,'halftone').params.pitch = 4 + (i % 7);
+    await withDeadline(recompute(), 20000, 'heap loop ' + i);
   }
   var mem1 = performance.memory ? performance.memory.usedJSHeapSize : 0;
   var grewMb = Math.round((mem1-mem0)/1048576);
@@ -387,9 +542,25 @@ const SCRIPT = `(async function(){
 async function run(win, app, outDir) {
   await new Promise((r) => win.webContents.once('did-finish-load', r));
   await new Promise((r) => setTimeout(r, 900));
+
+  // If the page never comes back, say where it got to rather than leaving a
+  // window open with nothing written.
+  const HARD_LIMIT = 20 * 60 * 1000;
+  const giveUp = new Promise((resolve) => setTimeout(async () => {
+    let at = 'unknown';
+    try {
+      at = await win.webContents.executeJavaScript('JSON.stringify(window.__suiteProgress||null)');
+    } catch (e) { /* window gone */ }
+    resolve(JSON.stringify({ error: 'suite did not finish within ' +
+      (HARD_LIMIT / 60000) + ' minutes', lastProgress: at }));
+  }, HARD_LIMIT));
+
   let result;
-  try { result = await win.webContents.executeJavaScript(SCRIPT, true); }
-  catch (err) { result = JSON.stringify({ error: String(err.stack || err) }); }
+  try {
+    result = await Promise.race([win.webContents.executeJavaScript(SCRIPT, true), giveUp]);
+  } catch (err) {
+    result = JSON.stringify({ error: String(err.stack || err) });
+  }
   fs.writeFileSync(path.join(outDir, 'suite.json'), result);
   app.quit();
 }

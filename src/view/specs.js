@@ -445,9 +445,11 @@
               ],
               tip: 'Screen angles. Thirty degrees apart is what stops a moire pattern forming' },
             { kind: 'number', id: 'angles.c', label: 'Cyan', icon: 'rotate', min: -90, max: 90, scrub: 0.5, showIf: 'cmyk' },
-            { kind: 'number', id: 'angles.m', label: 'Magenta', icon: 'rotate', min: -90, max: 90, scrub: 0.5 },
+            { kind: 'number', id: 'angles.m', label: 'Magenta', icon: 'rotate', min: -90, max: 90, scrub: 0.5,
+              tip: 'Screen angle for the magenta plate, and for the colour ink in duotone' },
             { kind: 'number', id: 'angles.y', label: 'Yellow', icon: 'rotate', min: -90, max: 90, scrub: 0.5, showIf: 'cmyk' },
-            { kind: 'number', id: 'angles.k', label: 'Black', icon: 'rotate', min: -90, max: 90, scrub: 0.5 },
+            { kind: 'number', id: 'angles.k', label: 'Black', icon: 'rotate', min: -90, max: 90, scrub: 0.5,
+              tip: 'Screen angle for the black plate, and for the dark ink in duotone and mono' },
             { kind: 'toggle', id: 'channels.c', label: 'Cyan plate', icon: 'eye', showIf: 'cmyk' },
             { kind: 'toggle', id: 'channels.m', label: 'Magenta plate', icon: 'eye', showIf: 'cmyk' },
             { kind: 'toggle', id: 'channels.y', label: 'Yellow plate', icon: 'eye', showIf: 'cmyk' },
@@ -455,7 +457,11 @@
             { kind: 'colour', id: 'duotone.0', label: 'Ink one', icon: 'fill', showIf: 'duotone',
               tip: 'The dark ink' },
             { kind: 'colour', id: 'duotone.1', label: 'Ink two', icon: 'fill', showIf: 'duotone',
-              tip: 'The second ink. Ignored in mono' }
+              tip: 'The second ink. Ignored in mono' },
+            { kind: 'range', id: 'duotoneSplit', label: 'Split', icon: 'gcr',
+              min: 0.1, max: 0.85, step: 0.01, fmt: pct, showIf: 'duotone',
+              tip: 'Where the dark ink starts. The colour carries the whole range; ' +
+                   'the dark ink only comes in past this and the two overprint' }
           ]
         },
         {

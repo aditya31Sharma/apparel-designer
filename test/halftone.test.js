@@ -199,6 +199,70 @@ console.log('\nmodulators respond');
       Object.assign({}, base, { minDot: 0 })).channels[0].dots.length);
 })();
 
+console.log('\none and two colour modes');
+(function () {
+  var w = 300, h = 300;
+  function flat2(r, g, b) { return flat(w, h, r, g, b); }
+  function inkOf(res) {
+    var a = 0;
+    res.channels.forEach(function (ch) {
+      for (var o = 0; o < ch.dots.length; o += H.STRIDE) {
+        a += Math.PI * ch.dots[o + 2] * ch.dots[o + 2];
+      }
+    });
+    return a / (w * h);
+  }
+  var base = { frequency: 30, minDot: 0, inkDensity: 1 };
+
+  /* The bug this guards: black generation is 1 - max(r,g,b), so a saturated
+   * colour has no black in it and a mono screen printed a red logo as blank
+   * paper. One and two colour modes work from perceptual tone instead. */
+  var redMono = inkOf(H.screen(flat2(255, 0, 0), w, h, Object.assign({ mode: 'mono' }, base)));
+  ok('mono prints a saturated red as ink, not as blank paper', redMono > 0.5, redMono.toFixed(2));
+
+  var yellowMono = inkOf(H.screen(flat2(255, 255, 0), w, h, Object.assign({ mode: 'mono' }, base)));
+  ok('mono prints yellow light, because yellow is light', yellowMono < 0.2, yellowMono.toFixed(2));
+  ok('mono ranks red darker than yellow, as the eye does', redMono > yellowMono);
+
+  var blackMono = inkOf(H.screen(flat2(0, 0, 0), w, h, Object.assign({ mode: 'mono' }, base)));
+  var whiteMono = inkOf(H.screen(flat2(255, 255, 255), w, h, Object.assign({ mode: 'mono' }, base)));
+  ok('mono covers black', blackMono > 0.9, blackMono.toFixed(2));
+  ok('mono leaves white alone', whiteMono < 0.02, whiteMono.toFixed(2));
+
+  var duo = H.screen(flat2(120, 120, 120), w, h, Object.assign({ mode: 'duotone' }, base));
+  ok('duotone gives exactly two plates', duo.channels.length === 2,
+    duo.channels.map(function (c) { return c.label; }).join('+'));
+  ok('duotone names them colour and black',
+    duo.channels[0].label === 'Colour' && duo.channels[1].label === 'Black');
+
+  // The colour has to carry the midtones, or a duotone is just mono with a tint.
+  function plateArea(res, i) {
+    var d = res.channels[i].dots, a = 0;
+    for (var o = 0; o < d.length; o += H.STRIDE) a += Math.PI * d[o + 2] * d[o + 2];
+    return a / (w * h);
+  }
+  var mid = H.screen(flat2(150, 150, 150), w, h, Object.assign({ mode: 'duotone' }, base));
+  ok('the colour carries the midtones', plateArea(mid, 0) > 0.2, plateArea(mid, 0).toFixed(2));
+  ok('the dark ink stays out of the midtones', plateArea(mid, 1) < plateArea(mid, 0),
+    plateArea(mid, 1).toFixed(2) + ' vs ' + plateArea(mid, 0).toFixed(2));
+
+  var shadow = H.screen(flat2(30, 30, 30), w, h, Object.assign({ mode: 'duotone' }, base));
+  ok('the dark ink arrives in the shadows', plateArea(shadow, 1) > plateArea(mid, 1));
+
+  // 100 grey sits above the default split, so there is dark ink to hold back.
+  var early = H.screen(flat2(100, 100, 100), w, h,
+    Object.assign({ mode: 'duotone', duotoneSplit: 0.35 }, base));
+  var late = H.screen(flat2(100, 100, 100), w, h,
+    Object.assign({ mode: 'duotone', duotoneSplit: 0.8 }, base));
+  ok('raising the split holds the dark ink back further',
+    plateArea(late, 1) < plateArea(early, 1) && plateArea(early, 1) > 0.05,
+    plateArea(late, 1).toFixed(3) + ' vs ' + plateArea(early, 1).toFixed(3));
+
+  var cmyk = H.screen(flat2(255, 0, 0), w, h, Object.assign({ mode: 'cmyk' }, base));
+  ok('cmyk still separates a red into magenta and yellow',
+    cmyk.channels.length === 4 && plateArea(cmyk, 1) > 0.8 && plateArea(cmyk, 2) > 0.8);
+})();
+
 console.log('\npath output');
 (function () {
   var w = 200, h = 200;

@@ -23,6 +23,7 @@
   var generation = 0, pending = null, interactive = false, idleTimer = null;
   var pixelsSent = null;          // which layer's pixels the worker already holds
   var lastPool = 1;
+  var watchdog = null, restarts = 0;
   var renders = {};                 // layerId -> drawable result
   var tool = 'warp';
   var textureImage = null, textureName = '';
@@ -92,7 +93,8 @@
       kind: 'run',
       generation: ++generation,
       items: layer.source.items.map(function (i) {
-        return { d: i.d, fill: i.fill, stroke: i.stroke, strokeWidth: i.strokeWidth };
+        return { d: i.d, frame: i.frame, fill: i.fill, stroke: i.stroke,
+                 strokeWidth: i.strokeWidth };
       }),
       bbox: layer.source.bbox,
       effects: layer.effects.map(function (e) {
@@ -115,10 +117,42 @@
 
     if (worker) {
       pending = { layer: layer, generation: job.generation };
-      worker.postMessage(job);
+      // The photo's pixels are a copy made for this message, so hand ownership
+      // over rather than letting postMessage clone another 27MB of them.
+      var transfer = job.pixels ? [job.pixels.data.buffer] : [];
+      worker.postMessage(job, transfer);
+      armWatchdog(job.generation);
     } else {
       runLocally(job, layer);
     }
+  }
+
+  /* A worker that stops answering leaves the canvas frozen with no explanation,
+   * which reads as the whole app having hung. Give every job a ceiling; if one
+   * passes it, say so, throw the worker away and start a fresh one. */
+  var WATCHDOG_MS = 20000;
+
+  function armWatchdog(gen) {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(function () {
+      if (gen !== generation) return;          // superseded, nothing to rescue
+      restartWorker('the background worker stopped responding');
+    }, WATCHDOG_MS);
+  }
+
+  function restartWorker(why) {
+    if (worker) { try { worker.terminate(); } catch (e) {} }
+    worker = null;
+    pixelsSent = null;
+    restarts++;
+    if (restarts > 3) {
+      fail(why + '. Falling back to the main thread.');
+      markDirty(false);
+      return;
+    }
+    fail(why + '. Restarting it and retrying.');
+    startWorker();
+    markDirty(false);
   }
 
   /* The same stack, on the main thread. Only used when a worker cannot start. */
@@ -144,14 +178,17 @@
 
   function onWorkerMessage(e) {
     var m = e.data;
+    clearTimeout(watchdog);
     if (m.kind === 'error') { fail(m.message); return; }
     if (m.kind !== 'done' || m.generation !== generation) return;
     var layer = pending && pending.layer;
     if (!layer) return;
     if (m.poolProblem) fail('erosion pool: ' + m.poolProblem + ' (running single threaded)');
     lastPool = m.pool || 1;
+    // Read by the benchmark and suite harnesses. Nothing in the app uses them.
     window.__lastBreakdown = m.breakdown || null;
     window.__lastHT = m.stats && m.stats.halftone ? m.stats.halftone : null;
+    window.__lastStats = m.stats || null;
     if (window.__onResult) { var f = window.__onResult; window.__onResult = null; f(); }
     acceptResult(layer, m, m.stats, m.generation, m.ms);
     armFullPass();
@@ -188,14 +225,12 @@
       bbox: out.bbox || layer.source.bbox
     };
     window.__timing = window.__timing || {};
-    if (window.__timing) {
-      window.__timing.buildPaths = Math.round(performance.now() - tAccept);
-      window.__timing.workerMs = ms;
-    }
+    window.__timing.buildPaths = Math.round(performance.now() - tAccept);
+    window.__timing.workerMs = ms;
     var tPaint = performance.now();
     showStats(stats, ms, shapes, plates);
     paint();
-    if (window.__timing) window.__timing.firstPaint = Math.round(performance.now() - tPaint);
+    window.__timing.firstPaint = Math.round(performance.now() - tPaint);
   }
 
   function showStats(stats, ms, shapes, plates) {
@@ -403,7 +438,11 @@
       // The frame keeps the image's own proportions; the pixels ride along.
       var w = nw, h = nh;
       var d = 'M0 0H' + w + 'V' + h + 'H0Z';
-      loadItems([{ d: d, fill: 'none', stroke: 'none', strokeWidth: 0 }], file.name, img, pixels);
+      // `frame: true` marks this as a stand-in for the picture rather than
+      // artwork in its own right. Effects use it to decide whether they still
+      // need to trace the photo or are already looking at real outlines.
+      loadItems([{ d: d, frame: true, fill: 'none', stroke: 'none', strokeWidth: 0 }],
+        file.name, img, pixels);
       var L = Doc.selected(doc);
       if (L) {
         // An image on its own has nothing to show until an effect runs, so give
@@ -779,8 +818,10 @@
       if (!matte) return;
       history.push(doc);
       L.matte = matte;
-      $('bgState').textContent = matte.source === 'model'
-        ? 'Background removed' : 'Background removed (luminance fallback)';
+      if (matte.source === 'model') $('bgState').textContent = 'Background removed';
+      else if (!/used the simple cut/.test($('bgState').textContent)) {
+        $('bgState').textContent = 'Background removed with the simple cut';
+      }
       markDirty(false);
     }).catch(function (err) {
       btn.classList.remove('busy');
@@ -801,8 +842,18 @@
       return window.desktop.removeBackground({
         data: img.data.buffer, width: c.width, height: c.height
       }).then(function (res) {
-        if (!res || !res.mask) throw new Error(res && res.error ? res.error : 'no mask');
-        return { mask: new Uint8Array(res.mask), w: res.width, h: res.height, source: 'model' };
+        if (res && res.mask) {
+          return { mask: new Uint8Array(res.mask), w: res.width, h: res.height, source: 'model' };
+        }
+        // No model, no Node to run it in, or the download failed. Say what
+        // happened and cut it the simple way rather than doing nothing.
+        var why = (res && res.error) || 'the model was unavailable';
+        $('bgState').textContent = 'Model unavailable (' + why + '), used the simple cut';
+        return luminanceMatte(bitmap);
+      }).catch(function (err) {
+        $('bgState').textContent = 'Model failed (' + (err.message || err) +
+          '), used the simple cut';
+        return luminanceMatte(bitmap);
       });
     }
     return Promise.resolve(luminanceMatte(bitmap));
@@ -862,7 +913,23 @@
     history: history,
     syncPanels: syncPanels,
     selected: function () { return Doc.selected(doc); },
-    tool: function () { return tool; }
+    tool: function () { return tool; },
+    /* A snapshot for the test harnesses. When a recompute never comes back, the
+     * first question is always whether there is a selected layer at all. */
+    debug: function () {
+      var L = Doc.selected(doc);
+      return {
+        layers: doc.layers.length,
+        selection: doc.selection,
+        selected: L ? L.id : null,
+        selectedName: L ? L.name : null,
+        hasPixels: !!(L && L.source.pixels),
+        generation: generation,
+        pendingGen: pending ? pending.generation : null,
+        worker: !!worker,
+        renders: Object.keys(renders).length
+      };
+    }
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
