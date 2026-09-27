@@ -2,3 +2,10 @@ node_modules/
 build/
 *.log
 .gstack/
+
+# test artwork, kept out of the repo because it is large and not ours to ship
+doom.jpg
+palm.png
+banner.png
+hf.png
+alpha.png

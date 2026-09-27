@@ -6,10 +6,13 @@
 (function (root) {
   'use strict';
 
+  /* Resampling and matte application are pure array maths and are exported
+   * whatever the environment, so they can be tested without a browser. Only the
+   * parts that genuinely need a drawing surface check for one. */
   var hasCanvas = typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined';
-  if (!hasCanvas) { root.Raster = null; return; }
 
   function canvasOf(w, h) {
+    if (!hasCanvas) throw new Error('no drawing surface in this environment');
     if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
     var c = document.createElement('canvas');
     c.width = w; c.height = h;
@@ -80,38 +83,51 @@
     return { data: data, w: w, h: h, scale: scale, x: b.x, y: b.y };
   }
 
-  /* Box-filter a photo down to the working size, compositing onto white so a
-   * transparent edge does not drag its colour in. Every source pixel is read
-   * exactly once, so the cost is the source size and nothing else. */
+  /* Resample a photo to the working size, compositing onto white so a
+   * transparent edge does not drag its colour in.
+   *
+   * Walks destination pixels rather than source ones. Walking the source and
+   * scattering into the destination is faster to write and silently wrong the
+   * moment the working bitmap is larger than the photo: destination pixels that
+   * happen to catch no source pixel keep their initial value, which came out as
+   * black speckle over everything screened above 1:1.
+   */
   function resample(px, w, h) {
     var src = px.data, sw = px.w, sh = px.h;
     var out = new Uint8ClampedArray(w * h * 4);
-    var acc = new Float32Array(w * h * 4);
-    var cnt = new Uint32Array(w * h);
+    var xr = sw / w, yr = sh / h;
 
-    var xs = w / sw, ys = h / sh;
-    for (var sy = 0; sy < sh; sy++) {
-      var dy = (sy * ys) | 0;
-      if (dy >= h) dy = h - 1;
-      var srow = sy * sw * 4, drow = dy * w;
-      for (var sx = 0; sx < sw; sx++) {
-        var dx = (sx * xs) | 0;
-        if (dx >= w) dx = w - 1;
-        var si = srow + sx * 4, di = (drow + dx) * 4;
-        var a = src[si + 3] / 255;
-        acc[di] += src[si] * a + 255 * (1 - a);
-        acc[di + 1] += src[si + 1] * a + 255 * (1 - a);
-        acc[di + 2] += src[si + 2] * a + 255 * (1 - a);
-        cnt[drow + dx]++;
+    for (var y = 0; y < h; y++) {
+      var y0 = (y * yr) | 0;
+      var y1 = ((y + 1) * yr) | 0;
+      if (y1 <= y0) y1 = y0 + 1;
+      if (y1 > sh) y1 = sh;
+      for (var x = 0; x < w; x++) {
+        var x0 = (x * xr) | 0;
+        var x1 = ((x + 1) * xr) | 0;
+        if (x1 <= x0) x1 = x0 + 1;
+        if (x1 > sw) x1 = sw;
+
+        var r = 0, g = 0, b = 0, n = 0;
+        for (var sy = y0; sy < y1; sy++) {
+          var row = sy * sw * 4;
+          for (var sx = x0; sx < x1; sx++) {
+            var si = row + sx * 4;
+            var a = src[si + 3] / 255;
+            r += src[si] * a + 255 * (1 - a);
+            g += src[si + 1] * a + 255 * (1 - a);
+            b += src[si + 2] * a + 255 * (1 - a);
+            n++;
+          }
+        }
+        var o = (y * w + x) * 4;
+        if (n) {
+          out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n;
+        } else {
+          out[o] = out[o + 1] = out[o + 2] = 255;
+        }
+        out[o + 3] = 255;
       }
-    }
-    for (var i = 0, n = w * h; i < n; i++) {
-      var k = cnt[i] || 1;
-      var o = i * 4;
-      out[o] = acc[o] / k;
-      out[o + 1] = acc[o + 1] / k;
-      out[o + 2] = acc[o + 2] / k;
-      out[o + 3] = 255;
     }
     return out;
   }

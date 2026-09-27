@@ -92,7 +92,7 @@
       }
     }
     var res = H.screen(px, w, h, {
-      frequency: Math.max(10, Math.min(26, p.frequency / 4)),
+      frequency: Math.max(10, Math.min(26, Math.round(w / Math.max(2, p.pitch * 1.6)))),
       pattern: p.pattern, inkDensity: p.inkDensity, dotGain: p.dotGain,
       roughness: p.roughness, fuzziness: p.fuzziness, paperFibre: p.paperFibre,
       inkTexture: p.inkTexture, minDot: p.minDot, seed: 3,
@@ -167,14 +167,14 @@
   /* ---------- halftone styles ---------- */
 
   var HALFTONE_PRESETS = {
-    newsprint: { label: 'Newsprint', tip: 'Coarse screen, heavy dot gain, grey paper', params: { frequency: 70, pattern: 'round', inkDensity: 0.92, dotGain: 0.35, roughness: 0.12, fuzziness: 0.1, paperFibre: 0.22, inkTexture: 0.12, gcr: 1, minDot: 0.07, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
-    comic: { label: 'Comic', tip: 'Big clean dots on a wide screen. Ben Day', params: { frequency: 48, pattern: 'round', inkDensity: 1, dotGain: 0.1, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 0.85, minDot: 0.1, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
-    riso: { label: 'Risograph', tip: 'Two inks, slightly off register, grainy', params: { frequency: 85, pattern: 'round', inkDensity: 0.86, dotGain: 0.2, roughness: 0.3, fuzziness: 0.25, paperFibre: 0.3, inkTexture: 0.25, gcr: 1, minDot: 0.08, mode: 'duotone', anglePreset: 'reference', angles: { c: 15, m: -15, y: 0, k: 45 }, duotone: ['#1b1b1b', '#ff5a3c'] } },
-    fine: { label: 'Fine art', tip: 'Tight screen, accurate tone, no distress', params: { frequency: 160, pattern: 'round', inkDensity: 0.95, dotGain: 0, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 0.9, minDot: 0.04, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
-    poster: { label: 'Coarse poster', tip: 'Very wide screen. The dots are the artwork', params: { frequency: 30, pattern: 'round', inkDensity: 1, dotGain: 0.15, roughness: 0.08, fuzziness: 0.05, paperFibre: 0.1, inkTexture: 0, gcr: 1, minDot: 0.12, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#111111', '#e5352b'] } },
-    copier: { label: 'Photocopy', tip: 'Black only, blown out, dirty', params: { frequency: 110, pattern: 'round', inkDensity: 1, dotGain: 0.55, roughness: 0.4, fuzziness: 0.45, paperFibre: 0.45, inkTexture: 0.4, gcr: 1, minDot: 0.06, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#000000', '#e5352b'] } },
-    lineScreen: { label: 'Line screen', tip: 'Bars instead of dots, the old gravure look', params: { frequency: 64, pattern: 'line', inkDensity: 0.95, dotGain: 0.1, roughness: 0, fuzziness: 0, paperFibre: 0.08, inkTexture: 0, gcr: 1, minDot: 0.05, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#111111', '#e5352b'] } },
-    square: { label: 'Square dot', tip: 'Hard square cells. Reads as digital', params: { frequency: 72, pattern: 'square', inkDensity: 0.95, dotGain: 0.05, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 1, minDot: 0.06, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } }
+    newsprint: { label: 'Newsprint', tip: 'Coarse screen, heavy dot gain, grey paper', params: { pitch: 9, pattern: 'round', inkDensity: 0.92, dotGain: 0.35, roughness: 0.12, fuzziness: 0.1, paperFibre: 0.22, inkTexture: 0.12, gcr: 1, minDot: 0.07, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
+    comic: { label: 'Comic', tip: 'Big clean dots on a wide screen. Ben Day', params: { pitch: 15, pattern: 'round', inkDensity: 1, dotGain: 0.1, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 0.85, minDot: 0.1, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
+    riso: { label: 'Risograph', tip: 'Two inks, slightly off register, grainy', params: { pitch: 7, pattern: 'round', inkDensity: 0.86, dotGain: 0.2, roughness: 0.3, fuzziness: 0.25, paperFibre: 0.3, inkTexture: 0.25, gcr: 1, minDot: 0.08, mode: 'duotone', anglePreset: 'reference', angles: { c: 15, m: -15, y: 0, k: 45 }, duotone: ['#1b1b1b', '#ff5a3c'] } },
+    fine: { label: 'Fine art', tip: 'Tight screen, accurate tone, no distress', params: { pitch: 3, pattern: 'round', inkDensity: 0.95, dotGain: 0, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 0.9, minDot: 0.04, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
+    poster: { label: 'Coarse poster', tip: 'Very wide screen. The dots are the artwork', params: { pitch: 26, pattern: 'round', inkDensity: 1, dotGain: 0.15, roughness: 0.08, fuzziness: 0.05, paperFibre: 0.1, inkTexture: 0, gcr: 1, minDot: 0.12, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#111111', '#e5352b'] } },
+    copier: { label: 'Photocopy', tip: 'Black only, blown out, dirty', params: { pitch: 5, pattern: 'round', inkDensity: 1, dotGain: 0.55, roughness: 0.4, fuzziness: 0.45, paperFibre: 0.45, inkTexture: 0.4, gcr: 1, minDot: 0.06, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#000000', '#e5352b'] } },
+    lineScreen: { label: 'Line screen', tip: 'Bars instead of dots, the old gravure look', params: { pitch: 9, pattern: 'line', inkDensity: 0.95, dotGain: 0.1, roughness: 0, fuzziness: 0, paperFibre: 0.08, inkTexture: 0, gcr: 1, minDot: 0.05, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#111111', '#e5352b'] } },
+    square: { label: 'Square dot', tip: 'Hard square cells. Reads as digital', params: { pitch: 7, pattern: 'square', inkDensity: 0.95, dotGain: 0.05, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 1, minDot: 0.06, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } }
   };
 
   /* ---------- specs ---------- */
@@ -404,8 +404,10 @@
                   { value: 'diamond', label: 'Diamond', thumb: glyph('dotDi'), tip: 'Rotated squares' }
                 ];
               } },
-            { kind: 'range', id: 'frequency', label: 'Frequency', icon: 'freq', min: 12, max: 500, step: 1,
-              tip: 'Screen cells across the artwork. The pitch in pixels is shown in the toolbar' },
+            { kind: 'range', id: 'pitch', label: 'Dot size', icon: 'freq', min: 1.5, max: 60, step: 0.1,
+              fmt: function (v) { return v.toFixed(1) + 'px'; },
+              tip: 'Spacing between dot centres, in artwork pixels. Small is a fine screen ' +
+                   'and far more dots. Independent of how big the artwork is' },
             { kind: 'range', id: 'inkDensity', label: 'Ink density', icon: 'inkDrop', min: 0.2, max: 1.3, step: 0.01,
               fmt: pct, tip: 'Global multiplier on how much ink each dot carries' },
             { kind: 'range', id: 'dotGain', label: 'Dot gain', icon: 'gain', min: -1, max: 1, step: 0.01,

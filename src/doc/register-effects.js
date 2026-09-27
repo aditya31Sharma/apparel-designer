@@ -140,7 +140,14 @@
     icon: 'halftone',
     tip: 'Screen the artwork into a CMYK dot pattern, as real vectors',
     defaults: {
-      frequency: 90,
+      /* Dot pitch in artwork pixels, not cells across the artwork.
+       *
+       * Cells-across is what the screening engine wants, but it is relative to
+       * the artwork, so a preset tuned on a 400px logo puts 76px dots on a
+       * 2600px photo. Pitch is what a designer actually means by "a five pixel
+       * dot", and it holds whatever the artwork is. Frequency is derived from
+       * it at run time. */
+      pitch: 5,
       pattern: 'round',
       inkDensity: 0.9,
       dotGain: 0,
@@ -167,7 +174,8 @@
       // artwork gets rendered once, at a resolution tied to the screen pitch so
       // each cell still has something to average over.
       var tR = now();
-      var px = ctx.rasterize(input, p, ctx);
+      var px = ctx.rasterize(input, Object.assign({}, p,
+        { frequency: frequencyOf(p, input.bbox) }), ctx);
       if (!px || !px.w || !px.h) return null;
       var msRaster = Math.round(now() - tR);
 
@@ -180,9 +188,9 @@
        * does. Frequency scales as the square root because dots go as its
        * square, so a 42% pass really is about 42% of the work. Full quality
        * follows the moment the slider is let go. */
-      var freq = p.frequency;
+      var freq = frequencyOf(p, input.bbox);
       if (ctx.quality !== undefined && ctx.quality < 1) {
-        freq = Math.max(10, Math.round(p.frequency * Math.sqrt(ctx.quality)));
+        freq = Math.max(8, Math.round(freq * Math.sqrt(ctx.quality)));
       }
 
       var res = H.screen(px.data, px.w, px.h, {
@@ -226,6 +234,15 @@
       };
     }
   });
+
+  /* Pitch to screen cells across the artwork, which is what the engine screens
+   * on. Clamped so a tiny pitch on a huge canvas cannot ask for ten million
+   * dots and a huge pitch cannot ask for none. */
+  function frequencyOf(p, bbox) {
+    var pitch = Math.max(0.8, p.pitch || 5);
+    var w = (bbox && bbox.width) || 1000;
+    return Math.max(6, Math.min(900, Math.round(w / pitch)));
+  }
 
   function channelsFor(p) {
     if (p.mode === 'mono') return { c: 0, m: 0, y: 0, k: 1 };

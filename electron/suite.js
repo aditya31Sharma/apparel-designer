@@ -183,11 +183,13 @@ const SCRIPT = `(async function(){
   hist.undo(window.App.doc());
 
   // ================= photo =================
-  var P = await loadFile('doom-test.jpg','image/jpeg');
+  var P = await loadFile('doom.jpg','image/jpeg');
   check('photo loads', !!P && !!P.source.pixels, P && P.source.pixels && (P.source.pixels.w+'x'+P.source.pixels.h));
   check('photo auto-picks halftone', Doc.effect(P,'halftone').on);
-  check('photo frequency scales to size',
-    Doc.effect(P,'halftone').params.frequency > 150, Doc.effect(P,'halftone').params.frequency);
+  check('halftone is sized by dot pitch, not cells across',
+    Doc.effect(P,'halftone').params.pitch > 0 &&
+    Doc.effect(P,'halftone').params.frequency === undefined,
+    JSON.stringify({pitch: Doc.effect(P,'halftone').params.pitch}));
 
   var photoHt = await runCase('photo/halftone', function(){
     offAll(P); Doc.effect(P,'halftone').on = true;
@@ -220,6 +222,66 @@ const SCRIPT = `(async function(){
     Doc.effect(P,'dither').on = true;
     Doc.effect(P,'halftone').on = true;
   }, 9000);
+
+  /* Pitch has to mean the same thing on artwork of any size. Setting an
+   * absolute cell count was what put 76px dots on a large image from a preset
+   * tuned on a small one. */
+  // Read the number the engine reported rather than scraping formatted text.
+  function pitchOf(){
+    return window.__lastHT && window.__lastHT.pitch ? window.__lastHT.pitch : -1;
+  }
+  offAll(P);
+  Doc.effect(P,'halftone').on = true;
+  Doc.effect(P,'halftone').params.pitch = 7;
+  await recompute();
+  var pitchBig = pitchOf();
+  P.transform.width = P.transform.width / 3;
+  P.transform.height = P.transform.height / 3;
+  await recompute();
+  var pitchSmall = pitchOf();
+  P.transform.width = P.transform.width * 3;
+  P.transform.height = P.transform.height * 3;
+  check('dot pitch holds when the artwork is resized',
+    Math.abs(pitchBig - 7) < 0.6 && Math.abs(pitchSmall - 7) < 0.6,
+    pitchBig + ' then ' + pitchSmall);
+  await recompute();
+
+  for (i = 0; i < hnames.length; i++){
+    offAll(P);
+    Doc.effect(P,'halftone').on = true;
+    Object.assign(Doc.effect(P,'halftone').params,
+      JSON.parse(JSON.stringify(window.HALFTONE_PRESETS[hnames[i]].params)));
+    await recompute();
+    var want = window.HALFTONE_PRESETS[hnames[i]].params.pitch;
+    check('preset ' + hnames[i] + ' keeps its pitch on a photo',
+      Math.abs(pitchOf() - want) < Math.max(0.6, want * 0.08),
+      'wanted ' + want + ' got ' + pitchOf());
+  }
+
+  /* A fully transparent area is paper and must take no ink. Resampling used to
+   * leave black gaps wherever the working bitmap was larger than the photo,
+   * which screened the empty space at about fifty per cent. */
+  var A = await loadFile('alpha.png','image/png');
+  offAll(A);
+  Doc.effect(A,'halftone').on = true;
+  Doc.effect(A,'halftone').params.pitch = 5;
+  await recompute();
+  check('transparent areas take no ink', (function(){
+    var canvas = document.getElementById('canvas');
+    var g = canvas.getContext('2d');
+    var vp = window.App.viewport();
+    document.getElementById('fit').click();
+    // sample just inside the top-left of the artwork frame, which is transparent
+    var corner = window.Doc.applyMatrix(window.Doc.layerMatrix(A), 12, 12);
+    var s = vp.toScreen(corner);
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var px = g.getImageData(Math.round(s.x * dpr), Math.round(s.y * dpr), 1, 1).data;
+    window.__cornerPx = [px[0], px[1], px[2]];
+    return px[0] > 225 && px[1] > 225 && px[2] > 225;
+  })(), JSON.stringify(window.__cornerPx));
+
+  window.App.doc().layers = [P];
+  window.App.doc().selection = P.id;
 
   // ---- background removal falls back cleanly ----
   clearErr();

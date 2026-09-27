@@ -411,12 +411,9 @@
         // A traced photo has no colours of its own worth keeping, so the Fill
         // control drives it. Halftone ignores this and uses its plates.
         L.paint.useSourceColours = false;
-        var hp = Doc.effect(L, 'halftone');
-        hp.on = true;
-        // Frequency is cells across the artwork, so the same number means a
-        // very different dot on a 400px logo and a 4000px photo. Pick one that
-        // lands near a five pixel pitch, which is what a photo wants.
-        hp.params.frequency = Math.max(12, Math.min(500, Math.round(w / 5)));
+        // Dot pitch holds whatever size the artwork is, so nothing has to be
+        // recalculated here any more.
+        Doc.effect(L, 'halftone').on = true;
         tool = 'halftone';
         syncPanels();
         markDirty(false);

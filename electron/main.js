@@ -225,6 +225,7 @@ ipcMain.handle('bg:status', async () => {
 const SELFTEST = process.argv.includes('--selftest');
 const BENCH = process.argv.includes('--bench');
 const SUITE = process.argv.includes('--suite');
+const SHEET = process.argv.includes('--sheet');
 // Benchmarks have to run at the pixel density a real display has, or the cache
 // is a quarter of the size it will be in use and every number flatters.
 const DPR_ARG = process.argv.find((a) => a.startsWith('--dpr='));
@@ -234,8 +235,8 @@ app.whenReady().then(async () => {
   await startServer();
   createWindow();
   buildMenu();
-  if (SELFTEST || BENCH || SUITE) {
-    const mod = SUITE ? './suite.js' : BENCH ? './bench.js' : './selftest.js';
+  if (SELFTEST || BENCH || SUITE || SHEET) {
+    const mod = SHEET ? './sheet.js' : SUITE ? './suite.js' : BENCH ? './bench.js' : './selftest.js';
     require(mod).run(win, app, path.join(ROOT, 'build'))
       .catch((err) => { console.error(err); app.exit(1); });
   }
