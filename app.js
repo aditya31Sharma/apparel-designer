@@ -4,6 +4,14 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
+  /* Readouts are inputs in the Figma-style panel, spans elsewhere. */
+  function setVal(id, text) {
+    var el = $(id);
+    if (!el) return;
+    if ('value' in el && el.tagName === 'INPUT') el.value = text;
+    else el.textContent = text;
+  }
+
   // Surface boot and runtime errors instead of failing silently to a blank page.
   window.addEventListener('error', function (e) {
     var box = $('err');
@@ -246,10 +254,14 @@
       bits.push('corner ' + (Math.round(c.x * 10) / 10) + ', ' + (Math.round(c.y * 10) / 10));
     }
     $('hud').textContent = bits.join('  ·  ');
-    $('gStats').textContent = S.grungeStats
-      ? S.grungeStats.rings + ' shapes, ' + S.grungeStats.points.toLocaleString() +
-        ' points, ' + S.grungeStats.ms + 'ms'
-      : '';
+    setVal('zoomVal', Math.round(S.view.k * 100) + '%');
+    var gs = $('gStats');
+    if (gs) {
+      gs.textContent = S.grungeStats
+        ? S.grungeStats.rings + ' shapes · ' + S.grungeStats.points.toLocaleString() +
+          ' points · ' + S.grungeStats.ms + 'ms'
+        : '';
+    }
   }
 
   function render() { compute(); draw(); }
@@ -392,6 +404,27 @@
 
   var ICON = 'M0 0 H96 V17 H0 Z M0 25 H70 V42 H0 Z M0 50 H96 V67 H0 Z';
 
+  var PRESET_TIP = {
+    free: 'No bend of its own. Drag the four corners',
+    arc: 'Bends the whole lockup into a rainbow',
+    peak: 'Like Arc but pointed at the centre',
+    archUp: 'Domes the top edge, leaves the base flat',
+    archDown: 'Domes the base, leaves the top flat',
+    bulge: 'Fattens through the middle',
+    squeeze: 'Pinches the middle',
+    flag: 'Waves both edges together',
+    wave: 'Waves the edges against each other',
+    rise: 'Lifts one end in a straight ramp',
+    slant: 'Shears sideways, like an italic',
+    shear: 'Tilts the baseline',
+    taperTop: 'Narrows the top into a trapezoid',
+    taperBase: 'Narrows the base into a trapezoid',
+    perspective: 'Trapezoid with a depth shift',
+    inflate: 'Lens bulge through the centre',
+    twist: 'Rotates the middle against the ends',
+    fish: 'Squeezes the ends vertically'
+  };
+
   function buildPresets() {
     $('presets').innerHTML = Warp.PRESETS.map(function (p) {
       var opts = { preset: p.id, strength: 58, smooth: true };
@@ -400,10 +433,11 @@
       }
       var d = Warp.warp([ICON], { x: 0, y: 0, width: 96, height: 67 }, opts).join(' ');
       var b = Warp.bounds([d]), pad = Math.max(b.width, b.height) * .05;
-      return '<div class="preset' + (p.id === S.preset ? ' on' : '') + '" data-id="' + p.id +
-        '" title="' + p.label + '"><svg viewBox="' + (b.x - pad) + ' ' + (b.y - pad) + ' ' +
+      return '<div class="preset' + (p.id === S.preset ? ' on' : '') + '" data-id="' +
+        p.id + '" data-tip="' + p.label + '|' + (PRESET_TIP[p.id] || '') +
+        '"><svg viewBox="' + (b.x - pad) + ' ' + (b.y - pad) + ' ' +
         (b.width + pad * 2) + ' ' + (b.height + pad * 2) + '"><path d="' + d +
-        '" fill="currentColor"/></svg><span>' + p.label + '</span></div>';
+        '" fill="currentColor"/></svg></div>';
     }).join('');
     Array.prototype.forEach.call($('presets').children, function (n) {
       n.onclick = function () {
@@ -419,7 +453,7 @@
   /* ---------- controls ---------- */
 
   $('strength').oninput = function () {
-    S.strength = +this.value; $('strengthVal').textContent = this.value; render();
+    S.strength = +this.value; setVal('strengthVal', this.value); render();
   };
   $('smooth').onchange = function () { S.smooth = this.checked; render(); };
   $('fill').oninput = function () { S.fill = this.value; draw(); };
@@ -441,7 +475,7 @@
   function syncGrungeLabels() {
     G_IDS.forEach(function (id) {
       var v = +$(id).value;
-      $(id + 'Val').textContent = G_FMT[id] ? G_FMT[id](v) : String(v);
+      setVal(id + 'Val', G_FMT[id] ? G_FMT[id](v) : String(v));
     });
   }
 
@@ -550,10 +584,10 @@
   }
 
   $('levels').oninput = function () {
-    $('levelsVal').textContent = this.value; traceImage();
+    setVal('levelsVal', this.value); traceImage();
   };
   $('imgThresh').oninput = function () {
-    $('imgThreshVal').textContent = this.value; traceImage();
+    setVal('imgThreshVal', this.value); traceImage();
   };
 
   function loadMarkup(markup, name) {

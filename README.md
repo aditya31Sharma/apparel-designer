@@ -12,6 +12,15 @@ locally instead:
 python3 -m http.server 8900 --bind 127.0.0.1
 ```
 
+## The interface
+
+Two tools, switched from the toolbar: **Warp** bends the artwork, **Dither** erodes it
+into ink spatter. Each has its own property panel on the right.
+
+Controls are icons. Hover any of them for a name and a sentence on what it does. The
+readout at the bottom left of the canvas shows zoom, warped size, grid step, path and
+contour counts, and the selected corner's coordinates.
+
 ## Getting artwork in
 
 | | |
@@ -76,7 +85,7 @@ off gives faceted polygons.
 Each preset's icon is drawn by running the real engine on a sample mark, so the icon
 always matches what the preset does.
 
-## Grunge
+## Dither
 
 Erodes the outline into ink spatter. It is a real geometry operation, not a raster
 filter or a texture overlay: the result is vector paths you can scale.
@@ -117,14 +126,14 @@ The readout under the controls shows shapes, points and milliseconds. Fine grain
 high erosion can produce thousands of contours; that is the honest cost of spatter in
 vectors rather than pixels. Raise Simplify or lower Detail to bring it down.
 
-Grunge runs **after** the warp, on the deformed outline, so the erosion follows the bend.
+Dither runs **after** the warp, on the deformed outline, so the erosion follows the bend.
 
 ## Images
 
 Drop or paste a PNG, JPEG or WebP and it is traced to vectors: luminance is thresholded
 into **Tones** bands, each band traced to contours and filled with a grey step. **Cutoff**
 moves the threshold. One tone gives a hard black-and-white stamp, which is what suits
-the grunge treatment; up to four gives a posterised version.
+the dither treatment; up to four gives a posterised version.
 
 ## Export
 
