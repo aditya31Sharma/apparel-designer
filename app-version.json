@@ -1,6 +1,6 @@
 {
-  "version": "2.6.0",
-  "minShell": "2.6.0",
-  "tag": "v2.6.0",
-  "notes": "Type, in any font on this Mac: Adobe Fonts, the fonts in Downloads (zipped or not), yours and the system's. Needs a fresh download this once, because the app itself learned to read fonts."
+  "version": "2.7.0",
+  "minShell": "2.7.0",
+  "tag": "v2.7.0",
+  "notes": "One Install fonts button: every font in Adobe Fonts and Downloads, zipped or not, that is not installed yet goes into your Fonts folder. The text tool is gone. Needs a fresh download this once."
 }
