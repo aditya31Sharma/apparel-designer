@@ -20,7 +20,7 @@
   var doc = Doc.makeDoc();
   var history = Doc.History(80);
   var viewport, overlay, panels = {}, worker = null;
-  var generation = 0, pending = null, interactive = false, idleTimer = null;
+  var generation = 0, pending = null;
   var pixelsSent = null;          // which layer's pixels the worker already holds
   var lastPool = 1;
   var watchdog = null, restarts = 0;
@@ -53,41 +53,47 @@
     }
   }
 
-  /* Ask for a recompute. While a slider is held the job runs at reduced
-   * resolution, which is roughly six times cheaper and indistinguishable at
-   * screen size; the full-quality pass follows when the drag stops. */
-  /* Two passes per change: a reduced one now, the real one once the input stops.
+  /* One fidelity, and it is the one you keep.
    *
-   * The full pass is armed only after the preview has landed, never on a timer
-   * running alongside it. Arming it on a timer meant a drag that produced a
-   * result every 80ms had the full pass superseding the preview before it
-   * arrived, so every preview was computed, thrown away, and then waited on
-   * anyway. The wait a person felt was both passes, not the cheap one. */
-  var SETTLE_MS = 160;
-  var wantFull = false;
+   * A held slider used to run a cheap preview: the source sampled at 42%, the
+   * halftone screen coarsened to 65% of its frequency, and the erosion grid
+   * halved, which in mask pixels means the grain, the spatter and the spread
+   * all came out more than twice the size. Then the drag stopped and the real
+   * pass replaced it with something else. You were aiming at a picture the
+   * tool had no intention of giving you.
+   *
+   * So the preview is now the result. The speed comes from doing less work
+   * rather than different work: one job is in flight at a time, and a change
+   * arriving while one is running replaces whatever was waiting instead of
+   * joining a queue behind it. A drag used to post a job per slider tick and
+   * the worker computed every one of them in full, discarding all but the
+   * last. It now computes the newest state as fast as it can and skips the
+   * ones nobody would have seen, which is both correct and less work than the
+   * two-pass scheme it replaces.
+   */
+  var busy = false;      // a job is out
+  var queued = false;    // and the document has moved on since
 
+  /* `live` used to pick a quality. It is kept because callers pass it and
+   * because a drag and a commit are still worth telling apart, but nothing
+   * about the result depends on it any more. */
   function markDirty(live) {
-    interactive = !!live;
-    clearTimeout(idleTimer);
-    wantFull = !!live;
-    compute(live ? 0.42 : 1);
+    if (busy) { queued = true; return; }
+    compute();
   }
 
-  /* Called once a result has been accepted. If that was a preview and nothing
-   * new has come in since, queue the real thing. */
-  function armFullPass() {
-    if (!wantFull) return;
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(function () {
-      if (!wantFull) return;
-      wantFull = false;
-      compute(1);
-    }, SETTLE_MS);
+  /* Called once a job has landed, however it landed. */
+  function finishJob() {
+    busy = false;
+    if (!queued) return;
+    queued = false;
+    compute();
   }
 
-  function compute(quality) {
+  function compute() {
     var layer = Doc.selected(doc);
-    if (!layer) { renders = {}; paint(); return; }
+    if (!layer) { renders = {}; queued = false; paint(); return; }
+    busy = true;
 
     var job = {
       kind: 'run',
@@ -100,7 +106,6 @@
       effects: layer.effects.map(function (e) {
         return { type: e.type, on: e.on, params: JSON.parse(JSON.stringify(e.params)) };
       }),
-      quality: quality,
       matte: layer.matte,
       textureImage: textureImage,
       noPool: !!window.__noPool,
@@ -144,6 +149,9 @@
     if (worker) { try { worker.terminate(); } catch (e) {} }
     worker = null;
     pixelsSent = null;
+    // The job that hung is never coming back to release the lock.
+    busy = false;
+    queued = false;
     restarts++;
     if (restarts > 3) {
       fail(why + '. Falling back to the main thread.');
@@ -159,7 +167,7 @@
   function runLocally(job, layer) {
     try {
       var ctx = {
-        quality: job.quality, textureImage: job.textureImage,
+        textureImage: job.textureImage,
         rasterize: window.Raster.rasterize, traceImage: window.Raster.traceImage,
         maskFromPaths: window.Grunge.maskFromPaths
       };
@@ -169,19 +177,20 @@
           pixels: layer.source.pixels, sourceId: layer.id }, ctx).then(function (run) {
         acceptResult(layer, run.result, run.stats, job.generation,
           Math.round(performance.now() - t0));
-        armFullPass();
+        finishJob();
         if (window.__onResult) { var g = window.__onResult; window.__onResult = null; g(); }
-      }).catch(function (err) { fail(err.message || String(err)); });
+      }).catch(function (err) { fail(err.message || String(err)); finishJob(); });
     } catch (err) {
       fail(err.message || String(err));
+      finishJob();
     }
   }
 
   function onWorkerMessage(e) {
     var m = e.data;
     clearTimeout(watchdog);
-    if (m.kind === 'error') { fail(m.message); return; }
-    if (m.kind !== 'done' || m.generation !== generation) return;
+    if (m.kind === 'error') { fail(m.message); finishJob(); return; }
+    if (m.kind !== 'done' || m.generation !== generation) { finishJob(); return; }
     var layer = pending && pending.layer;
     if (!layer) return;
     if (m.poolProblem) fail('erosion pool: ' + m.poolProblem + ' (running single threaded)');
@@ -190,8 +199,9 @@
     window.__lastBreakdown = m.breakdown || null;
     window.__lastHT = m.stats && m.stats.halftone ? m.stats.halftone : null;
     window.__lastStats = m.stats || null;
+    window.__lastMs = m.ms;
     acceptResult(layer, m, m.stats, m.generation, m.ms);
-    armFullPass();
+    finishJob();
     // Signalled last, once the scene and the readouts are actually updated.
     // Firing it first meant a harness read the previous render's numbers and
     // every measurement came out one step behind.

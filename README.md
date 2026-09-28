@@ -163,7 +163,7 @@ npm run dist               # build dist/Apparel-Designer-mac-arm64.dmg
 
 ```bash
 npm test                   # 181 engine checks, no browser needed
-npm run suite              # 377 checks driving the real desktop build
+npm run suite              # 381 checks driving the real desktop build
 npm run bench              # timings for every heavy path
 npm run shots              # regenerate the screenshots in this README
 electron . --sheet         # render every effect over the test images
@@ -283,12 +283,26 @@ Nothing builds path data as a string during interaction. Contours arrive as an x
 `Float32Array` plus ring offsets, halftone dots arrive as `[cx, cy, r, phase]` quads,
 and both get drawn under a matrix. The `d` string is built only on export.
 
-While a slider is held the work runs at reduced quality: 42% sampling resolution and
-a correspondingly coarser screen, because the dot count is what the outlines and the
-drawing scale with and it does not fall when the sampling does. Full quality is armed
-only once a preview has landed and nothing newer has come in; arming it on a timer
-alongside the preview meant every preview was computed, superseded, and waited on
-anyway.
+**The preview is the result.** A held slider used to run something cheaper and
+different: the source sampled at 42%, the screen coarsened to 65% of its frequency,
+and the erosion grid halved, which in mask pixels meant the grain, the spatter and
+the spread all came out more than twice the size. Then the drag stopped and a second
+pass replaced it with something else. You aimed at one picture and got another.
+
+There is one fidelity now, and the speed comes from doing less work rather than
+different work. One job is in flight at a time, and a change arriving while one is
+running replaces whatever was waiting instead of joining a queue behind it: a drag
+used to post a job per slider tick and the worker computed every one of them in full,
+discarding all but the last. The mask and its distance field are held between ticks,
+because grain, spatter, pitting, blotching, bias, density and every texture control
+leave all three untouched, and for a photo traced into thousands of contours that is
+most of the job. The padding around the mask is rounded to a step of 32px for the same
+reason, and for a better one: every noise field is sampled at mask pixel coordinates,
+so a padding derived exactly from roughness slid the whole grain pattern sideways as
+you dragged roughness.
+
+Four checks in the suite compare the frame drawn mid-drag against the frame after it,
+pixel for pixel across 4.4 million of them, on the paths where the two used to differ.
 
 The erosion's pixel pass splits across a pool of workers over shared memory. That
 needs cross-origin isolation, which Chromium grants only to http origins, which is
@@ -309,17 +323,31 @@ why the desktop build serves itself from a loopback HTTP server rather than from
   writing into the destination is fine while downscaling and silently wrong the
   moment the working bitmap is larger: untouched destination pixels stayed black,
   which screened empty transparent space at about 50%.
+- **`multiply` is priced per draw call.** A screen has to reach the canvas in chunks,
+  because piling a hundred thousand subpaths into one `Path2D` is quadratic for every
+  dot shape that is not a circle. That is about two thousand fills, and with multiply
+  set on each of them a frame took 783ms; the same chunks drawn normally take 117ms.
+  Each ink now goes onto a layer of its own and the four are multiplied down at the
+  end, which took the frame to 13ms. It is also what the file does: the export writes
+  one compound path per ink inside a multiply group, so filling chunk after chunk with
+  multiply set was darkening every overlap that straddled two chunks, and the canvas
+  was showing shadows the SVG did not have.
 
 Measured at Retina density on a 1080px photo:
 
 | | |
 |---|---|
-| Halftone slider | 8ms |
-| Dither slider | 77ms |
-| Halftone, full quality | 63-90ms |
-| Eroded photo, full quality | 530-600ms |
-| Pan, 95th percentile frame | 17.7ms, which is vsync |
+| Halftone slider, round dots | 60ms compute, 6ms frame |
+| Halftone slider, cross dots | 195ms compute, 5ms frame |
+| Dither slider, traced photo | 65ms compute, 4ms frame |
+| Halftone from cold | 86ms |
+| Eroded photo from cold | 580-620ms |
+| Pan, 95th percentile frame | 18.6ms, which is vsync |
 | Heap over 25 recomputes | flat |
+
+Every one of those is the real thing, at the fidelity that gets exported. The slider
+numbers used to be 8ms and 77ms, for a picture the tool had no intention of giving
+you.
 
 A worker that stops answering is caught after twenty seconds: the app says so,
 throws it away, starts a fresh one and retries, and falls back to the main

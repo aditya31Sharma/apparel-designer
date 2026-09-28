@@ -27,17 +27,25 @@ const SCRIPT = `(async function(){
   /* Anything that takes longer than this has gone wrong, and a run that hangs
    * reports nothing at all, which is worse than a run that reports a stall.
    * Every await goes through here so the suite always produces a verdict. */
+  /* The timer has to be cleared when the promise wins the race. Left running,
+   * it fires later and reports a stall in a step that finished long ago, so a
+   * suite that merely got slower reads as a suite full of hangs. */
   function withDeadline(promise, ms, label){
+    var timer = null;
     return Promise.race([
       promise,
       new Promise(function (resolve) {
-        setTimeout(function () {
+        timer = setTimeout(function () {
+          timer = null;
           failures.push('STALLED at ' + label + ' after ' + ms + 'ms');
           results.push({ name: 'stall/' + label, pass: false, detail: ms + 'ms' });
           resolve('stalled');
         }, ms);
       })
-    ]);
+    ]).then(function (v) {
+      if (timer) clearTimeout(timer);
+      return v;
+    });
   }
 
   function check(name, cond, detail){
@@ -72,6 +80,26 @@ const SCRIPT = `(async function(){
       window.__onResult = function(){ finish(Math.round(performance.now() - t0)); };
       window.App.markDirty(false);
       setTimeout(function(){ finish(-1); }, budgetMs || 20000);
+    });
+  }
+
+  /* The same recompute, asked for the way a held slider asks for it. */
+  function recomputeLive(budgetMs){
+    return new Promise(function(resolve){
+      var t0 = performance.now(), settled = false;
+      function finish(v){ if (settled) return; settled = true; resolve(v); }
+      window.__onResult = function(){ finish(Math.round(performance.now() - t0)); };
+      window.App.markDirty(true);
+      setTimeout(function(){ finish(-1); }, budgetMs || 20000);
+    });
+  }
+
+  /* A painted frame, not just a scheduled one: the canvas is drawn in an
+   * animation frame after the result is accepted, so reading pixels any
+   * earlier reads the frame before. */
+  function frame(){
+    return new Promise(function(r){
+      requestAnimationFrame(function(){ requestAnimationFrame(r); });
     });
   }
 
@@ -441,6 +469,55 @@ const SCRIPT = `(async function(){
   window.App.doc().layers = [P];
   window.App.doc().selection = P.id;
   await withDeadline(recompute(), 25000, 'restore after round trip');
+
+  /* ---- the preview is the result ----
+   *
+   * A held slider used to compute something cheaper and different: a coarser
+   * screen, and an erosion grid that made the grain more than twice the size.
+   * You aimed at one picture and got another the moment you let go. These
+   * compare the frame drawn while dragging against the frame after the drag,
+   * pixel for pixel, on the paths where the two used to diverge. */
+  async function framesMatch(name, setup){
+    offAll(P);
+    setup();
+    await withDeadline(recompute(), 30000, name + ' settle');
+    document.getElementById('fit').click();
+    await wait(600);
+    await frame();
+
+    var canvas = document.getElementById('canvas');
+    function snap(){
+      return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    }
+    await withDeadline(recomputeLive(), 30000, name + ' drag');
+    await wait(400); await frame();
+    var dragging = snap();
+    await withDeadline(recompute(), 30000, name + ' commit');
+    await wait(400); await frame();
+    var settled = snap();
+
+    var differing = 0;
+    if (dragging.length !== settled.length) differing = -1;
+    else for (var q = 0; q < dragging.length; q += 4){
+      if (dragging[q] !== settled[q] || dragging[q+1] !== settled[q+1] ||
+          dragging[q+2] !== settled[q+2]) differing++;
+    }
+    check('preview matches the result: ' + name, differing === 0,
+          differing + ' of ' + (dragging.length / 4) + ' pixels differ');
+  }
+
+  beat('preview fidelity');
+  await framesMatch('halftone', function(){ Doc.effect(P,'halftone').on = true; });
+  await framesMatch('halftone, cross dots', function(){
+    Doc.effect(P,'halftone').on = true;
+    Doc.effect(P,'halftone').params.pattern = 'cross';
+  });
+  Doc.effect(P,'halftone').params.pattern = 'round';
+  await framesMatch('dither', function(){ Doc.effect(P,'dither').on = true; });
+  await framesMatch('warp and halftone together', function(){
+    Doc.effect(P,'warp').on = true;
+    Doc.effect(P,'halftone').on = true;
+  });
 
   // ---- interaction budget ----
   beat('halftone settle');

@@ -78,15 +78,59 @@ function ensureBands() {
   return true;
 }
 
+/* Rasterising the outline and running a distance transform over the result
+ * depends on the outline, the resolution and the padding, and on nothing else
+ * in the options. Grain, spatter, pitting, blotching, bias, density, detail
+ * and every texture control leave all three alone, so on a slider drag the
+ * answer is already known. For a photo traced into thousands of contours that
+ * is the most expensive part of the job, done again for nothing on every tick.
+ *
+ * Held across calls rather than computed again: the mask, its distance field,
+ * and the shared buffers the bands read and write, which are tens of megabytes
+ * that would otherwise be allocated and copied per tick. */
+/* Several entries rather than one, because a photo split into tone levels
+ * erodes each level in turn within a single pass: one slot would be evicted by
+ * the next item every time and never hit. Capped by total pixels rather than
+ * by count, since a mask and its buffers run to about ten bytes a pixel and a
+ * big photo is worth tens of megabytes on its own. */
+var SDF_BUDGET = 16e6;
+var sdfCache = [];
+
+function sdfCacheFind(d, bbox, px, pad) {
+  for (var i = 0; i < sdfCache.length; i++) {
+    var c = sdfCache[i];
+    if (c.d === d && c.px === px && c.pad === pad &&
+        c.bx === bbox.x && c.by === bbox.y &&
+        c.bw === bbox.width && c.bh === bbox.height) {
+      // Most recently used first, so the eviction below drops the coldest.
+      if (i) { sdfCache.splice(i, 1); sdfCache.unshift(c); }
+      return c;
+    }
+  }
+  return null;
+}
+
+function sdfCacheStore(entry) {
+  sdfCache.unshift(entry);
+  var total = 0;
+  for (var i = 0; i < sdfCache.length; i++) {
+    total += sdfCache[i].R.w * sdfCache[i].R.h;
+    if (i > 0 && total > SDF_BUDGET) { sdfCache.length = i; break; }
+  }
+}
+
+function sdfCacheClear() { sdfCache.length = 0; }
+
 /* Paths in, the same { points, offsets, stats } fromPaths would have given. */
 function erodePaths(d, bbox, options) {
   var G = self.Grunge;
   var tMask = performance.now();
   var px = options.pxPerUnit || 2;
-  var pad = Math.ceil((options.roughness || 0) + (options.spatterRange || 7) +
-                      (options.spread || 0) + (options.meltRadius || 0) * 3 + 6);
-  var R = G.maskFromPaths([d], bbox, px, pad);
-  breakdown = { mask: Math.round(performance.now() - tMask), size: R.w + 'x' + R.h };
+  var pad = G.padFor(options);
+  var hit = sdfCacheFind(d, bbox, px, pad);
+  var R = hit ? hit.R : G.maskFromPaths([d], bbox, px, pad);
+  breakdown = { mask: Math.round(performance.now() - tMask), size: R.w + 'x' + R.h,
+                reused: !!hit };
   var place = { scale: 1 / px, ox: bbox.x - pad / px, oy: bbox.y - pad / px };
 
   // Small jobs are not worth the round trip.
@@ -94,16 +138,36 @@ function erodePaths(d, bbox, options) {
   if (options.noPool || pixels < 400000 || !ensureBands()) {
     lastPoolSize = 1;
     var res = G.erode(R.mask, R.w, R.h, options);
+    if (!hit) {
+      sdfCacheStore({ d: d, px: px, pad: pad, bx: bbox.x, by: bbox.y,
+                      bw: bbox.width, bh: bbox.height,
+                      R: R, distSab: null, outSab: null });
+    }
     return Promise.resolve(finishUp(res, place));
   }
 
   lastPoolSize = BANDS + 1;
   var tA = performance.now();
-  var dist = G.sdf(R.mask, R.w, R.h);
+  var distSab, outSab;
+  if (hit && hit.distSab) {
+    // The bands only read the distance field, so one buffer serves every tick.
+    // The output buffer is written in full by the bands between them, so it
+    // carries nothing over from the last pass.
+    distSab = hit.distSab;
+    outSab = hit.outSab;
+  } else {
+    var dist = G.sdf(R.mask, R.w, R.h);
+    distSab = new Float32Array(new SharedArrayBuffer(dist.length * 4));
+    distSab.set(dist);
+    outSab = new Uint8Array(new SharedArrayBuffer(R.w * R.h));
+    if (hit) { hit.distSab = distSab; hit.outSab = outSab; }
+    else {
+      sdfCacheStore({ d: d, px: px, pad: pad, bx: bbox.x, by: bbox.y,
+                      bw: bbox.width, bh: bbox.height,
+                      R: R, distSab: distSab, outSab: outSab });
+    }
+  }
   breakdown.sdf = Math.round(performance.now() - tA);
-  var distSab = new Float32Array(new SharedArrayBuffer(dist.length * 4));
-  distSab.set(dist);
-  var outSab = new Uint8Array(new SharedArrayBuffer(R.w * R.h));
 
   var n = BANDS + 1;                       // the bands plus this thread
   var rows = R.h;
@@ -143,6 +207,7 @@ function erodePaths(d, bbox, options) {
       canShare = false;
       band.forEach(function (w) { try { w.terminate(); } catch (e) {} });
       band.length = 0;
+      sdfCacheClear();
       self.Grunge.erodePixels(distSab, outSab, R.w, R.h, options, 0, edges[n - 1]);
     }
     var tC = performance.now();
@@ -183,7 +248,6 @@ self.onmessage = function (e) {
     };
 
     var ctx = {
-      quality: msg.quality,
       textureImage: msg.textureImage || null,
       erodePaths: erodePaths,
       noPool: msg.noPool,

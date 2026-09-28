@@ -88,14 +88,15 @@
         texture: p.texture, textureAmount: p.textureAmount,
         textureScale: p.textureScale * s, textureInvert: p.textureInvert,
         textureImage: ctx.textureImage || null,
-        // Interpolating the texture field costs about a third of the fine
-        // speckle, which is invisible in a reduced-resolution preview and not
-        // acceptable in the version that gets exported.
-        textureStep: (ctx.quality === undefined || ctx.quality >= 1) ? 0 : 0.6,
+        textureStep: 0,
         noPool: !!ctx.noPool,
         meltRadius: p.meltRadius * s, meltCut: p.meltCut,
         detail: p.detail, minArea: 2.2, smooth: 1, seed: p.seed,
-        pxPerUnit: p.pxPerUnit * (ctx.quality === undefined ? 1 : ctx.quality)
+        // Every size above is in mask pixels, so this is what decides how big
+        // the grain, the spatter and the spread come out in the artwork.
+        // Scaling it down for a preview does not make a rougher version of the
+        // same picture, it makes a different picture with much bigger grain.
+        pxPerUnit: p.pxPerUnit
       };
       var out = [], kept = 0, points = 0;
       // erodePaths is supplied by whoever runs the stack: a pool of workers
@@ -185,16 +186,10 @@
       var tS = now();
       var channels = channelsFor(p);
 
-      /* A reduced-quality preview has to reduce the number of dots, not just
-       * how finely the picture is sampled. The dot count is what the outlines
-       * and the drawing both scale with, and it does not fall when the sampling
-       * does. Frequency scales as the square root because dots go as its
-       * square, so a 42% pass really is about 42% of the work. Full quality
-       * follows the moment the slider is let go. */
+      /* The screen frequency is the effect. Coarsening it for a preview moves
+       * every dot, so the thing on screen while the slider is held has to be
+       * screened at the frequency the file will be. */
       var freq = frequencyOf(p, input.bbox);
-      if (ctx.quality !== undefined && ctx.quality < 1) {
-        freq = Math.max(8, Math.round(freq * Math.sqrt(ctx.quality)));
-      }
 
       var res = H.screen(px.data, px.w, px.h, {
         frequency: freq, pattern: p.pattern, inkDensity: p.inkDensity,

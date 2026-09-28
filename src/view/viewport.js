@@ -170,17 +170,81 @@
             c.fillStyle = L.paper;
             c.fillRect(L.bbox.x, L.bbox.y, L.bbox.width, L.bbox.height);
           }
-          var prev = c.globalCompositeOperation;
-          c.globalCompositeOperation = 'multiply';
-          L.plates.forEach(function (pl) {
-            c.fillStyle = pl.colour;
-            for (var q = 0; q < pl.paths.length; q++) c.fill(pl.paths[q]);
-          });
-          c.globalCompositeOperation = prev;
+          drawPlates(c, L);
         }
         c.restore();
       });
       c.restore();
+    }
+
+    /* Each ink is drawn on a layer of its own with ordinary compositing, and
+     * the four layers are multiplied down at the end.
+     *
+     * Two reasons, and the second is the one that matters.
+     *
+     * Multiply is priced per draw call. A screen has to be handed to the
+     * canvas in chunks, because piling a hundred thousand subpaths into one
+     * Path2D is quadratic for every dot shape that is not a circle. That makes
+     * around two thousand fills, and with multiply set on every one of them a
+     * frame took 783ms; the same chunks drawn normally take 117ms, and the
+     * four images that composite them cost nothing.
+     *
+     * And it is what the file does. The export writes one compound path per
+     * ink inside a multiply group, so a dot overlapping its neighbour is
+     * multiplied once. Filling chunk after chunk with multiply set multiplies
+     * every overlap that happens to straddle two chunks a second time, so the
+     * canvas came out darker in the shadows than the SVG it was previewing.
+     */
+    var plateLayer = null, plateCtx = null;
+
+    function drawPlates(c, L) {
+      var n = 0;
+      L.plates.forEach(function (pl) { n += pl.paths.length; });
+
+      // One fill per ink needs no layer, and allocating one would cost more
+      // than it saves.
+      if (n <= L.plates.length) {
+        var prev = c.globalCompositeOperation;
+        c.globalCompositeOperation = 'multiply';
+        L.plates.forEach(function (pl) {
+          c.fillStyle = pl.colour;
+          for (var q = 0; q < pl.paths.length; q++) c.fill(pl.paths[q]);
+        });
+        c.globalCompositeOperation = prev;
+        return;
+      }
+
+      var target = c.canvas;
+      if (!plateLayer) {
+        plateLayer = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(target.width, target.height)
+          : document.createElement('canvas');
+        plateCtx = null;
+      }
+      if (plateLayer.width !== target.width || plateLayer.height !== target.height) {
+        plateLayer.width = target.width;
+        plateLayer.height = target.height;
+        plateCtx = null;
+      }
+      if (!plateCtx) plateCtx = plateLayer.getContext('2d');
+
+      var m = c.getTransform();
+      var alpha = c.globalAlpha;
+
+      L.plates.forEach(function (pl) {
+        plateCtx.setTransform(1, 0, 0, 1, 0, 0);
+        plateCtx.clearRect(0, 0, plateLayer.width, plateLayer.height);
+        plateCtx.setTransform(m);
+        plateCtx.fillStyle = pl.colour;
+        for (var q = 0; q < pl.paths.length; q++) plateCtx.fill(pl.paths[q]);
+
+        c.save();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.globalCompositeOperation = 'multiply';
+        c.globalAlpha = alpha;
+        c.drawImage(plateLayer, 0, 0);
+        c.restore();
+      });
     }
 
     /* ---------- tier 2 and 3: put the cache on screen ---------- */

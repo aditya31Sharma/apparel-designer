@@ -686,6 +686,33 @@
     };
   }
 
+  /* How much margin the mask needs around the artwork for ink that erodes,
+   * spatters or spreads outwards to have somewhere to land.
+   *
+   * Rounded up to a step, and the step is the point. Every noise field in the
+   * pixel pass is sampled at mask pixel coordinates, so the padding is part of
+   * where the grain lands: a padding derived exactly from roughness means that
+   * dragging roughness slides the entire grain pattern sideways underneath the
+   * change being made, and the texture crawls while you are trying to judge
+   * it. In steps, the padding holds still across the range of a normal drag,
+   * the pattern stays put, and the mask and its distance field can be reused
+   * from one tick to the next instead of being rebuilt for a result that has
+   * not moved.
+   *
+   * Both callers have to agree on this to the pixel, which is why it is one
+   * function and not the same expression written out twice: the worker and the
+   * main-thread fallback disagreeing would be two different pictures again. */
+  var PAD_STEP = 32;
+
+  function padFor(o) {
+    o = o || {};
+    var need = (o.roughness === undefined ? G.DEFAULTS.roughness : o.roughness) +
+               (o.spatterRange === undefined ? G.DEFAULTS.spatterRange : o.spatterRange) +
+               (o.spread || 0) + (o.meltRadius || 0) * 3 + 6;
+    return Math.max(PAD_STEP, Math.ceil(need / PAD_STEP) * PAD_STEP);
+  }
+
+  G.padFor = padFor;
   G.DEFAULTS = DEFAULTS;
   G.erode = erode;
   G.erodePixels = erodePixels;
@@ -761,9 +788,7 @@
   function fromPaths(paths, bbox, options) {
     var o = options || {};
     var px = o.pxPerUnit || 2;
-    var pad = Math.ceil((o.roughness || G.DEFAULTS.roughness) +
-                        (o.spatterRange || G.DEFAULTS.spatterRange) +
-                        (o.spread || 0) + (o.meltRadius || 0) * 3 + 6);
+    var pad = G.padFor(o);
     var R = maskFromPaths(paths, bbox, px, pad);
     var res = G.erode(R.mask, R.w, R.h, o);
     var place = { scale: 1 / px, ox: bbox.x - pad / px, oy: bbox.y - pad / px };

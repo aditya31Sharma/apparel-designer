@@ -34,8 +34,7 @@
     // average gets noisy, more is paying for detail the screen throws away.
     var cells = Math.max(1, params.frequency);
     var want = (cells * 6) / b.width;
-    var scale = Math.max(0.25, want * (params.sampleScale || 1) *
-                                (ctx.quality === undefined ? 1 : ctx.quality));
+    var scale = Math.max(0.25, want * (params.sampleScale || 1));
     var cap = 3600 / Math.max(b.width, b.height);
     if (scale > cap) scale = cap;
 
