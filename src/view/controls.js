@@ -175,7 +175,7 @@
         node.innerHTML = items.map(function (t) {
           return '<div class="preset" data-v="' + t.value + '"' +
             (t.tip ? ' data-tip="' + t.label + '|' + t.tip + '"' : '') +
-            '><span class="thumb">' + t.thumb + '</span>' +
+            '><span class="thumb' + (t.paper ? ' paper' : '') + '">' + t.thumb + '</span>' +
             '<span class="cap">' + t.label + '</span></div>';
         }).join('');
         node.querySelectorAll('.preset').forEach(function (p) {
@@ -198,8 +198,41 @@
         '<div class="pr"' + tipAttr(row) + '>' + icon(row.icon) +
         '<span class="lbl grow">' + row.label + '</span>' +
         '<button class="tbtn">' + (ICON[row.buttonIcon || row.icon] || '') + '</button></div>');
-      node.querySelector('button').addEventListener('click', function () { row.action(api); });
-      return { node: node, show: function () {} };
+      var btn = node.querySelector('button'), lbl = node.querySelector('.lbl');
+      btn.addEventListener('click', function () { row.action(api); });
+      /* A row bound to a value can change its wording with it: the same
+       * button removes a background and, once there is a cut, puts it back.
+       * The value 'busy' disables it while the work is out. */
+      function show(v) {
+        if (row.altLabel !== undefined) lbl.textContent = v === true ? row.altLabel : row.label;
+        btn.disabled = v === 'busy';
+      }
+      return { node: node, show: show };
+    },
+
+    /* A job in flight: what it is doing, how far along, and how long is left.
+     * Shows nothing until there is something to say. */
+    progress: function (row) {
+      var node = el(
+        '<div class="prog"' + tipAttr(row) + '>' +
+        '<div class="prog-row">' + icon(row.icon) +
+        '<span class="ptext grow"></span><span class="eta"></span></div>' +
+        '<div class="bar"><i></i></div></div>');
+      var text = node.querySelector('.ptext'), eta = node.querySelector('.eta');
+      var bar = node.querySelector('.bar'), fill = node.querySelector('.bar i');
+      node.hidden = true;
+      function show(st) {
+        var on = !!(st && st.text);
+        node.hidden = !on;
+        if (!on) return;
+        text.textContent = st.text;
+        eta.textContent = st.eta || '';
+        node.classList.toggle('busy', !!st.busy);
+        node.classList.toggle('failed', !!st.failed);
+        bar.hidden = !st.busy;
+        fill.style.width = Math.round(Math.max(0, Math.min(1, st.pct || 0)) * 100) + '%';
+      }
+      return { node: node, show: show };
     },
 
     note: function (row) {

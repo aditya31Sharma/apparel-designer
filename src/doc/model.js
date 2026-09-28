@@ -30,6 +30,7 @@
       },
       effects: [],            // empty: a fresh import renders exactly as imported
       matte: null,            // alpha from background removal
+      invert: false,          // ink the light parts of a photo rather than the dark
       corners: null           // warp's four handles, in normalised frame space
     };
   }
@@ -167,7 +168,8 @@
           effects: l.effects.map(function (e) {
             return { type: e.type, on: e.on, params: Object.assign({}, e.params) };
           }),
-          corners: l.corners ? l.corners.map(function (c) { return { x: c.x, y: c.y }; }) : null
+          corners: l.corners ? l.corners.map(function (c) { return { x: c.x, y: c.y }; }) : null,
+          invert: !!l.invert
         };
       }));
     }
@@ -182,6 +184,7 @@
         l.paint = s.paint;
         l.effects = s.effects;
         l.corners = s.corners;
+        l.invert = !!s.invert;
       });
       doc.version++;
     }

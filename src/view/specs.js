@@ -3,6 +3,11 @@
  * The spec is the single source for a control's icon, its name, its tooltip and
  * the parameter it drives, so a control physically cannot reach the screen
  * without a name attached to it.
+ *
+ * Fewer controls than the engines have knobs, on purpose. A panel of twenty
+ * sliders where five matter is a panel where none of them do, because nobody
+ * can tell which five. Each effect shows the handful that change the picture;
+ * the rest are settled by the style you pick.
  */
 (function (root) {
   'use strict';
@@ -48,64 +53,43 @@
     return svg;
   }
 
-  /* Texture swatches: the field itself, at the tile's own proportions. */
-  var texThumbCache = {};
-  function textureThumb(name) {
-    if (texThumbCache[name]) return texThumbCache[name];
-    var w = 250, h = 76;
-    var c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    var ctx = c.getContext('2d');
-    var img = ctx.createImageData(w, h);
-    var N = { a: G.makeNoise(3307), b: G.makeNoise(7717) };
-    var fn = G.TEXTURES[name];
-    var vals = new Float64Array(w * h);
-    for (var i = 0, y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++, i++) vals[i] = fn(N, x * 0.09, y * 0.09);
-    }
-    var sorted = Float64Array.from(vals); sorted.sort();
-    var cut = sorted[Math.floor(0.55 * (vals.length - 1))];
-    for (i = 0; i < vals.length; i++) {
-      var on = vals[i] > cut ? 0 : 214;
-      img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = on;
-      img.data[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    var url = '<img alt="" src="' + c.toDataURL() + '">';
-    texThumbCache[name] = url;
-    return url;
-  }
-
-  /* Halftone tiles: screen a real gradient so the tile shows the true dot. */
+  /* Halftone tiles: screen a real gradient with the real settings, so the tile
+   * shows the true dot. One and two inks are drawn in the tile's own colour and
+   * the second ink; four colour keeps its process inks on white, since that is
+   * the only ground it is for. */
   var htThumbCache = {};
   function halftoneThumb(id) {
     if (htThumbCache[id]) return htThumbCache[id];
     var p = HALFTONE_PRESETS[id].params;
+    var four = p.mode === 'cmyk';
     var w = 120, h = 38;
     var px = new Uint8ClampedArray(w * h * 4);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var t = x / (w - 1);
-        var v = Math.round(255 * (1 - t * 0.92));
         var i = (y * w + x) * 4;
-        px[i] = px[i + 1] = px[i + 2] = v; px[i + 3] = 255;
+        if (four) {
+          // A sweep with colour in it, or a separation has nothing to show.
+          px[i] = Math.round(255 * (1 - t * 0.85));
+          px[i + 1] = Math.round(120 * (1 - t));
+          px[i + 2] = Math.round(60 + 180 * t);
+        } else {
+          px[i] = px[i + 1] = px[i + 2] = Math.round(255 * (1 - t * 0.92));
+        }
+        px[i + 3] = 255;
       }
     }
-    var res = H.screen(px, w, h, {
-      frequency: Math.max(10, Math.min(26, Math.round(w / Math.max(2, p.pitch * 1.6)))),
-      pattern: p.pattern, inkDensity: p.inkDensity, dotGain: p.dotGain,
-      roughness: p.roughness, fuzziness: p.fuzziness, paperFibre: p.paperFibre,
-      inkTexture: p.inkTexture, minDot: p.minDot, seed: 3,
-      channels: { c: 0, m: 0, y: 0, k: 1 }
-    });
-    var d = H.channelPath(res.channels[0], p);
-    htThumbCache[id] = '<svg viewBox="0 0 ' + w + ' ' + h + '"><path d="' + d +
-      '" fill="currentColor"/></svg>';
+    var freq = Math.max(10, Math.min(26, Math.round(w / Math.max(2, p.pitch * 1.6))));
+    var o = root.Effects.get('halftone').engineOptions(p, freq);
+    o.seed = 3;
+    var res = H.screen(px, w, h, o);
+    var paths = res.channels.map(function (ch) {
+      var fill = four ? ch.colour : ch.key === 'm' ? (p.ink2 || '#e5352b') : 'currentColor';
+      return '<path d="' + H.channelPath(ch, o) + '" fill="' + fill + '"' +
+        (four ? ' style="mix-blend-mode:multiply"' : '') + '/>';
+    }).join('');
+    htThumbCache[id] = '<svg viewBox="0 0 ' + w + ' ' + h + '">' + paths + '</svg>';
     return htThumbCache[id];
-  }
-
-  function glyph(name) {
-    return '<span class="glyph">' + (ICON[name] || '') + '</span>';
   }
 
   var WARP_TIPS = {
@@ -131,92 +115,92 @@
 
   /* ---------- dither styles ---------- */
 
-  /* The three worth starting from. Everything below them is a variation, and
-   * these carry `star`, which is what puts them in their own group at the top
-   * of the panel.
+  /* Six, each a different thing, because fifteen that differed by a slider
+   * were fifteen ways of not being able to tell. A style carries its texture,
+   * so choosing a style is the whole choice; the sliders under it tune it.
    *
-   * Every dither style now sets `imageCut` as well. It decides how a photo is
-   * cut into ink before any of the edge work happens, so leaving it out of the
-   * styles meant every one of them inherited one threshold, and on anything
-   * with dark clothing or shadow that threshold filled the picture in. Picking
-   * a style is meant to be picking a look. */
+   * Every style sets `imageCut` as well. It decides how a photo is cut into
+   * ink before any of the edge work happens, so leaving it out meant every
+   * style inherited one threshold, and on anything with dark clothing or
+   * shadow that threshold filled the picture in. */
   var DITHER_PRESETS = {
-    stencil: { star: true, label: 'One colour', tip: 'One ink, clean edges, detail kept. The place to start on a photo', params: { imageCut: 0.38, imageLevels: 1, grain: 1.2, roughness: 1.4, bias: 0, blotchAmount: 0.35, spatter: 0.08, pit: 0.03, spread: 0, spreadDensity: 0.5, texture: 'none', textureAmount: 0, textureScale: 3, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    screenprint: { star: true, label: 'Screen print', tip: 'The same read, with the edge a pulled screen actually leaves', params: { imageCut: 0.4, imageLevels: 1, grain: 1.7, roughness: 4.5, bias: 0.4, blotchAmount: 0.7, spatter: 0.28, pit: 0.12, spread: 1.5, spreadDensity: 0.5, texture: 'rough', textureAmount: 0.26, textureScale: 3.2, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    distressed: { star: true, label: 'Distressed', tip: 'Chewed and patchy. Worn into the garment', params: { imageCut: 0.42, imageLevels: 1, grain: 2.6, roughness: 5.5, bias: -0.2, blotchAmount: 0.85, spatter: 0.4, pit: 0.16, spread: 2.5, spreadDensity: 0.45, texture: 'crust', textureAmount: 0.4, textureScale: 5, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    spray: { label: 'Spray', tip: 'The base spray can look. Soft eroded edge with ink carrying past it', params: { imageCut: 0.42, imageLevels: 1, grain: 1.6, roughness: 7, bias: 0, blotchAmount: 0.85, spatter: 0.45, pit: 0.14, spread: 4.5, spreadDensity: 0.55, texture: 'rough', textureAmount: 0.3, textureScale: 3, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    halo: { label: 'Halo', tip: 'Ink pushed far past the edge and left wispy. The stacked drop shadows', params: { imageCut: 0.42, imageLevels: 1, grain: 1.3, roughness: 3, bias: 0, blotchAmount: 0.6, spatter: 0.3, pit: 0.04, spread: 11, spreadDensity: 0.28, texture: 'none', textureAmount: 0, textureScale: 3, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    charcoal: { label: 'Charcoal', tip: 'Coarse and patchy, like a stick dragged over rough paper', params: { imageCut: 0.42, imageLevels: 1, grain: 4.2, roughness: 11, bias: -1, blotchAmount: 0.95, spatter: 0.5, pit: 0.22, spread: 3, spreadDensity: 0.4, texture: 'crust', textureAmount: 0.42, textureScale: 5.5, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    drybrush: { label: 'Dry brush', tip: 'Long streaks pulled through the shape by a starved brush', params: { imageCut: 0.42, imageLevels: 1, grain: 1.2, roughness: 4, bias: 0, blotchAmount: 0.7, spatter: 0.25, pit: 0.06, spread: 1.5, spreadDensity: 0.5, texture: 'fibre', textureAmount: 0.55, textureScale: 2.6, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    photocopy: { label: 'Photocopy', tip: 'Banded and blown out, the way a tired copier prints', params: { imageCut: 0.42, imageLevels: 1, grain: 1, roughness: 3, bias: 0.4, blotchAmount: 0.5, spatter: 0.15, pit: 0.05, spread: 1, spreadDensity: 0.6, texture: 'scan', textureAmount: 0.4, textureScale: 3.4, meltRadius: 1.2, meltCut: 0.42, scale: 1 } },
-    bleed: { label: 'Bleed', tip: 'Ink spreading into the paper and fusing. Soft and heavy', params: { imageCut: 0.42, imageLevels: 1, grain: 2.4, roughness: 5, bias: 1.2, blotchAmount: 0.6, spatter: 0.2, pit: 0, spread: 3, spreadDensity: 0.8, texture: 'none', textureAmount: 0, textureScale: 3, meltRadius: 3.4, meltCut: 0.38, scale: 1 } },
-    sandpaper: { label: 'Sandpaper', tip: 'Fine even dust chewing at every edge', params: { imageCut: 0.42, imageLevels: 1, grain: 0.9, roughness: 5, bias: -0.4, blotchAmount: 0.4, spatter: 0.6, pit: 0.28, spread: 2, spreadDensity: 0.45, texture: 'speckle', textureAmount: 0.35, textureScale: 1.4, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    stamp: { label: 'Rubber stamp', tip: 'Solid core, ragged rim, ink skipping in patches', params: { imageCut: 0.42, imageLevels: 1, grain: 2.8, roughness: 4, bias: 0.6, blotchAmount: 0.9, spatter: 0.15, pit: 0.3, spread: 1, spreadDensity: 0.7, texture: 'crust', textureAmount: 0.3, textureScale: 6, meltRadius: 1.6, meltCut: 0.46, scale: 1 } },
-    halftoneDots: { label: 'Dot screen', tip: 'A dot grid chewed straight out of the shape', params: { imageCut: 0.42, imageLevels: 1, grain: 1.4, roughness: 2, bias: 0.8, blotchAmount: 0.3, spatter: 0.1, pit: 0, spread: 0, spreadDensity: 0.5, texture: 'halftone', textureAmount: 0.52, textureScale: 2.2, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    cracked: { label: 'Cracked', tip: 'Thin branching splits running through the ink', params: { imageCut: 0.42, imageLevels: 1, grain: 1.8, roughness: 4, bias: 0.5, blotchAmount: 0.6, spatter: 0.2, pit: 0.08, spread: 1, spreadDensity: 0.6, texture: 'crack', textureAmount: 0.6, textureScale: 4.5, meltRadius: 0, meltCut: 0.5, scale: 1 } },
-    concrete: { label: 'Concrete', tip: 'Pitted and mineral, like ink printed onto a wall', params: { imageCut: 0.42, imageLevels: 1, grain: 2.2, roughness: 6, bias: 0, blotchAmount: 0.8, spatter: 0.35, pit: 0.18, spread: 3, spreadDensity: 0.5, texture: 'concrete', textureAmount: 0.45, textureScale: 4, meltRadius: 0.8, meltCut: 0.5, scale: 1 } },
-    melted: { label: 'Melted', tip: 'Everything fused into soft blobs. Detail gone on purpose', params: { imageCut: 0.42, imageLevels: 1, grain: 3.4, roughness: 9, bias: 0, blotchAmount: 0.7, spatter: 0.4, pit: 0.1, spread: 4, spreadDensity: 0.6, texture: 'none', textureAmount: 0, textureScale: 3, meltRadius: 5.5, meltCut: 0.52, scale: 1 } }
+    stencil: { label: 'One colour', tip: 'One ink, clean edges, detail kept. The place to start on a photo', params: { imageCut: 0.38, imageLevels: 1, grain: 1.2, roughness: 1.4, bias: 0, blotchAmount: 0.35, spatter: 0.08, pit: 0.03, spread: 0, spreadDensity: 0.5, texture: 'none', textureAmount: 0, textureScale: 3, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } },
+    screenprint: { label: 'Screen print', tip: 'The same read, with the edge and the mottle a pulled screen actually leaves', params: { imageCut: 0.4, imageLevels: 1, grain: 1.7, roughness: 4.5, bias: 0.4, blotchAmount: 0.7, spatter: 0.28, pit: 0.12, spread: 1.5, spreadDensity: 0.5, texture: 'rough', textureAmount: 0.26, textureScale: 3.2, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } },
+    distressed: { label: 'Distressed', tip: 'Chewed and patchy, with crusty holes. Worn into the garment', params: { imageCut: 0.42, imageLevels: 1, grain: 2.6, roughness: 5.5, bias: -0.2, blotchAmount: 0.85, spatter: 0.4, pit: 0.16, spread: 2.5, spreadDensity: 0.45, texture: 'crust', textureAmount: 0.4, textureScale: 5, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } },
+    drybrush: { label: 'Dry brush', tip: 'Long streaks pulled through the shape by a starved brush', params: { imageCut: 0.42, imageLevels: 1, grain: 1.2, roughness: 4, bias: 0, blotchAmount: 0.7, spatter: 0.25, pit: 0.06, spread: 1.5, spreadDensity: 0.5, texture: 'fibre', textureAmount: 0.55, textureScale: 2.6, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } },
+    photocopy: { label: 'Photocopy', tip: 'Banded and blown out, the way a tired copier prints', params: { imageCut: 0.42, imageLevels: 1, grain: 1, roughness: 3, bias: 0.4, blotchAmount: 0.5, spatter: 0.15, pit: 0.05, spread: 1, spreadDensity: 0.6, texture: 'scan', textureAmount: 0.4, textureScale: 3.4, textureInvert: false, meltRadius: 1.2, meltCut: 0.42, scale: 1 } },
+    cracked: { label: 'Cracked', tip: 'Thin branching splits running through the ink', params: { imageCut: 0.42, imageLevels: 1, grain: 1.8, roughness: 4, bias: 0.5, blotchAmount: 0.6, spatter: 0.2, pit: 0.08, spread: 1, spreadDensity: 0.6, texture: 'crack', textureAmount: 0.6, textureScale: 4.5, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } }
   };
 
-  var TEXTURE_TIPS = {
-    none: 'No texture. The inside of the shape stays solid',
-    rough: 'Mottled wear, the most generally useful one',
-    crust: 'Big crusty patches with hard edges',
-    speckle: 'Fine even dust',
-    crack: 'Thin branching splits',
-    scan: 'Horizontal banding, like a photocopier',
-    fibre: 'Long diagonal strokes, like a dry brush',
-    concrete: 'Pitted mineral surface',
-    halftone: 'A regular dot grid',
-    spray: 'Clustered droplets'
-  };
-  var TEXTURE_LABELS = {
-    none: 'None', rough: 'Rough', crust: 'Crust', speckle: 'Speckle', crack: 'Cracks',
-    scan: 'Scan lines', fibre: 'Fibre', concrete: 'Concrete', halftone: 'Halftone',
-    spray: 'Spray', image: 'Import'
-  };
-
-  function ditherTiles(starred) {
-    return Object.keys(DITHER_PRESETS)
-      .filter(function (k) { return !!DITHER_PRESETS[k].star === !!starred; })
-      .map(function (k) {
-        return { value: k, label: DITHER_PRESETS[k].label,
-                 thumb: ditherThumb(k), tip: DITHER_PRESETS[k].tip };
-      });
-  }
-
-  function halftoneTiles(starred) {
-    return Object.keys(HALFTONE_PRESETS)
-      .filter(function (k) { return !!HALFTONE_PRESETS[k].star === !!starred; })
-      .map(function (k) {
-        return { value: k, label: HALFTONE_PRESETS[k].label,
-                 thumb: halftoneThumb(k), tip: HALFTONE_PRESETS[k].tip };
-      });
+  function ditherTiles() {
+    return Object.keys(DITHER_PRESETS).map(function (k) {
+      return { value: k, label: DITHER_PRESETS[k].label,
+               thumb: ditherThumb(k), tip: DITHER_PRESETS[k].tip };
+    });
   }
 
   /* ---------- halftone styles ---------- */
 
-  /* The three worth starting from, carrying `star` for the group at the top of
-   * the panel. Chosen by screening real photographs at every pitch and looking
-   * at the results, not by reasoning about them. */
+  /* Five, and every one is a different kind of screen rather than a different
+   * dot size: the dot size is a slider. Chosen by screening real photographs
+   * and looking at the results, not by reasoning about them. */
   var HALFTONE_PRESETS = {
-    onecolour: { star: true, label: 'One colour', tip: 'One ink, fine enough to hold a face. The place to start', params: { pitch: 6, pattern: 'round', inkDensity: 1, dotGain: 0.3, roughness: 0.08, fuzziness: 0.06, paperFibre: 0.12, inkTexture: 0.08, gcr: 1, minDot: 0.05, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#141414', '#e5352b'] } },
-    fourcolour: { star: true, label: 'Four colour', tip: 'Full CMYK separation at a pitch that still prints', params: { pitch: 5, pattern: 'round', inkDensity: 0.96, dotGain: 0.12, roughness: 0.04, fuzziness: 0.04, paperFibre: 0.08, inkTexture: 0.05, gcr: 0.85, minDot: 0.05, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
-    bold: { star: true, label: 'Bold', tip: 'Wide screen, one ink. The dots are part of the artwork', params: { pitch: 11, pattern: 'round', inkDensity: 1, dotGain: 0.25, roughness: 0.06, fuzziness: 0.04, paperFibre: 0.1, inkTexture: 0, gcr: 1, minDot: 0.08, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#141414', '#e5352b'] } },
-    newsprint: { label: 'Newsprint', tip: 'Coarse screen, heavy dot gain, grey paper', params: { pitch: 9, pattern: 'round', inkDensity: 0.92, dotGain: 0.35, roughness: 0.12, fuzziness: 0.1, paperFibre: 0.22, inkTexture: 0.12, gcr: 1, minDot: 0.07, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
-    comic: { label: 'Comic', tip: 'Big clean dots on a wide screen. Ben Day', params: { pitch: 15, pattern: 'round', inkDensity: 1, dotGain: 0.1, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 0.85, minDot: 0.1, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
-    riso: { label: 'Risograph', tip: 'Two inks, slightly off register, grainy', params: { pitch: 7, pattern: 'round', inkDensity: 0.86, dotGain: 0.2, roughness: 0.3, fuzziness: 0.25, paperFibre: 0.3, inkTexture: 0.25, gcr: 1, minDot: 0.08, mode: 'duotone', anglePreset: 'reference', angles: { c: 15, m: -15, y: 0, k: 45 }, duotone: ['#1b1b1b', '#ff5a3c'] } },
-    fine: { label: 'Fine art', tip: 'Tight screen, accurate tone, no distress', params: { pitch: 3, pattern: 'round', inkDensity: 0.95, dotGain: 0, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 0.9, minDot: 0.04, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } },
-    poster: { label: 'Coarse poster', tip: 'Very wide screen. The dots are the artwork', params: { pitch: 26, pattern: 'round', inkDensity: 1, dotGain: 0.15, roughness: 0.08, fuzziness: 0.05, paperFibre: 0.1, inkTexture: 0, gcr: 1, minDot: 0.12, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#111111', '#e5352b'] } },
-    copier: { label: 'Photocopy', tip: 'Black only, blown out, dirty', params: { pitch: 5, pattern: 'round', inkDensity: 1, dotGain: 0.55, roughness: 0.4, fuzziness: 0.45, paperFibre: 0.45, inkTexture: 0.4, gcr: 1, minDot: 0.06, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#000000', '#e5352b'] } },
-    lineScreen: { label: 'Line screen', tip: 'Bars instead of dots, the old gravure look', params: { pitch: 9, pattern: 'line', inkDensity: 0.95, dotGain: 0.1, roughness: 0, fuzziness: 0, paperFibre: 0.08, inkTexture: 0, gcr: 1, minDot: 0.05, mode: 'mono', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 }, duotone: ['#111111', '#e5352b'] } },
-    square: { label: 'Square dot', tip: 'Hard square cells. Reads as digital', params: { pitch: 7, pattern: 'square', inkDensity: 0.95, dotGain: 0.05, roughness: 0, fuzziness: 0, paperFibre: 0, inkTexture: 0, gcr: 1, minDot: 0.06, mode: 'cmyk', anglePreset: 'classic', angles: { c: 15, m: 75, y: 0, k: 45 } } }
+    onecolour: { label: 'One colour', tip: 'One ink, clean dots, fine enough to hold a face. The place to start', params: { mode: 'mono', pattern: 'round', pitch: 6, gain: 0.3, grit: 0, minDot: 0.05, angle: 45 } },
+    twocolour: { label: 'Two colour', tip: 'Your ink for the shadows, a second for the rest. A riso or a two screen print', params: { mode: 'duotone', pattern: 'round', pitch: 7, gain: 0.2, grit: 0.3, minDot: 0.06, angle: 45, ink2: '#ff5a3c', split: 0.45 } },
+    fourcolour: { label: 'Four colour', tip: 'Full process separation at a pitch that still prints. For white stock', params: { mode: 'cmyk', pattern: 'round', pitch: 5, gain: 0.12, grit: 0.1, minDot: 0.05, angle: 45 } },
+    lines: { label: 'Line screen', tip: 'Bars instead of dots, the old gravure look', params: { mode: 'mono', pattern: 'line', pitch: 9, gain: 0.1, grit: 0, minDot: 0.05, angle: 45 } },
+    photocopy: { label: 'Photocopy', tip: 'One ink, blown out, dirty. Every dot a little wrong', params: { mode: 'mono', pattern: 'round', pitch: 5, gain: 0.55, grit: 1, minDot: 0.06, angle: 45 } }
   };
+
+  function halftoneTiles() {
+    return Object.keys(HALFTONE_PRESETS).map(function (k) {
+      return { value: k, label: HALFTONE_PRESETS[k].label,
+               thumb: halftoneThumb(k), tip: HALFTONE_PRESETS[k].tip,
+               paper: HALFTONE_PRESETS[k].params.mode === 'cmyk' };
+    });
+  }
 
   /* ---------- specs ---------- */
 
   var SPECS = {
+    /* The top of the panel, above whichever effect is showing: the two
+     * colours, and what a photo needs. Everything else about the layer sits
+     * below the effect, because it is what you reach for less. */
     layer: function () {
+      return [
+        {
+          title: 'Colour', id: 'colour',
+          rows: [
+            { kind: 'colour', id: 'paint.fill', label: 'Ink', icon: 'fill',
+              tip: 'The one colour the artwork prints in. Every effect uses it: the ' +
+                   'dither, the warp, and a one or two colour halftone' },
+            { kind: 'colour', id: 'canvas', label: 'Canvas', icon: 'canvas',
+              tip: 'The colour behind the artwork, like the garment it will go on. ' +
+                   'Not saved into the file' },
+            { kind: 'toggle', id: 'paint.useSourceColours', label: 'Source colours', icon: 'image',
+              showIf: 'vector',
+              tip: 'Keep the colours the file arrived with instead of the ink above. ' +
+                   'Changing the ink switches this off' }
+          ]
+        },
+        {
+          title: 'Photo', id: 'photo', showIf: 'photo',
+          rows: [
+            { kind: 'button', id: 'hasMatte', label: 'Remove background',
+              altLabel: 'Restore background', icon: 'cutBg', buttonIcon: 'cutBg',
+              tip: 'Cuts the subject out of the photo so the effects stop putting ink ' +
+                   'on the background. Runs on this machine; nothing is uploaded',
+              action: function () { root.App.toggleBackground(); } },
+            { kind: 'progress', id: 'bgProgress', icon: 'cutBg' },
+            { kind: 'toggle', id: 'invert', label: 'Invert', icon: 'invert',
+              tip: 'Ink the light parts of the picture instead of the dark. For a ' +
+                   'photograph printed in a light ink on a dark garment' }
+          ]
+        }
+      ];
+    },
+
+    more: function () {
       return [
         {
           title: 'Transform', id: 'transform',
@@ -237,15 +221,11 @@
           ]
         },
         {
-          title: 'Appearance', id: 'appearance',
+          title: 'Outline and opacity', id: 'appearance',
           rows: [
-            { kind: 'toggle', id: 'paint.useSourceColours', label: 'Source colours', icon: 'image',
-              tip: 'Keep the fills and strokes the file arrived with, instead of the ones below' },
-            { kind: 'colour', id: 'paint.fill', label: 'Fill', icon: 'fill',
-              tip: 'Colour of the artwork' },
             { kind: 'toggle', id: 'paint.fillOn', label: 'Filled', icon: 'fill',
-              tip: 'Turn the fill off to leave only the stroke' },
-            { kind: 'colour', id: 'paint.stroke', label: 'Stroke', icon: 'stroke',
+              tip: 'Turn the fill off to leave only the outline' },
+            { kind: 'colour', id: 'paint.stroke', label: 'Outline', icon: 'stroke',
               tip: 'Outline colour' },
             { kind: 'number', id: 'paint.strokeWidth', label: 'Weight', icon: 'stroke',
               min: 0, max: 400, scrub: 0.25, tip: 'Outline thickness. Zero means no outline' },
@@ -253,15 +233,6 @@
               min: 0, max: 1, step: 0.01,
               fmt: function (v) { return Math.round(v * 100) + '%'; },
               tip: 'How transparent the whole layer is. Survives every effect' }
-          ]
-        },
-        {
-          title: 'Background', id: 'background',
-          rows: [
-            { kind: 'note', text: 'Cuts the subject out of an imported photo so the effects ' +
-              'stop putting ink on the background.' },
-            { kind: 'button', id: 'removeBgRow', label: 'Remove background', icon: 'cutBg',
-              buttonIcon: 'cutBg', action: function () { document.getElementById('removeBg').click(); } }
           ]
         }
       ];
@@ -309,12 +280,11 @@
           ]
         },
         {
-          title: 'Start here',
+          title: 'Style',
           rows: [
-            { kind: 'tiles', id: 'presetStar', bind: 'preset',
-              items: function () { return ditherTiles(true); } },
-            { kind: 'note', text: 'Pick one, then change anything below it. ' +
-              'A style is a starting point, not a lock.' }
+            { kind: 'tiles', id: 'preset', items: function () { return ditherTiles(); } },
+            { kind: 'note', text: 'Pick one, then tune it below. A style is a starting ' +
+              'point, not a lock.' }
           ]
         },
         {
@@ -332,85 +302,29 @@
           ]
         },
         {
-          title: 'All styles',
-          rows: [{
-            kind: 'tiles', id: 'preset',
-            items: function () { return ditherTiles(false); }
-          }]
-        },
-        {
           title: 'Edge',
           rows: [
-            { kind: 'range', id: 'grain', label: 'Grain', icon: 'grain', min: 0.4, max: 8, step: 0.1,
-              tip: 'Size of the speckle. Small is a fine spray, large tears in chunks' },
             { kind: 'range', id: 'roughness', label: 'Erosion', icon: 'erosion', min: 0, max: 20, step: 0.1,
               tip: 'How far the outline is eaten away. The main dial' },
-            { kind: 'range', id: 'bias', label: 'Weight', icon: 'weight', min: -6, max: 6, step: 0.1,
-              tip: 'Push the whole outline in or out' },
-            { kind: 'range', id: 'blotchAmount', label: 'Patchy', icon: 'patchy', min: 0, max: 1, step: 0.01,
-              fmt: pct, tip: 'How much the erosion varies across the artwork. Zero looks mechanical' },
+            { kind: 'range', id: 'grain', label: 'Grain', icon: 'grain', min: 0.4, max: 8, step: 0.1,
+              tip: 'Size of the bites. Small is a fine spray, large tears in chunks' },
             { kind: 'range', id: 'spatter', label: 'Spatter', icon: 'spatter', min: 0, max: 1, step: 0.01,
               fmt: pct, tip: 'Loose specks thrown clear of the edge' },
-            { kind: 'range', id: 'pit', label: 'Pits', icon: 'pits', min: 0, max: 0.45, step: 0.01,
-              fmt: pct, tip: 'Holes opened up inside the strokes' }
-          ]
-        },
-        {
-          title: 'Spread',
-          rows: [
-            { kind: 'note', text: 'Ink pushed out past the edge, dissolving as it goes. ' +
-              'The stacked drop shadows, as real geometry.' },
             { kind: 'range', id: 'spread', label: 'Spread', icon: 'spread', min: 0, max: 25, step: 0.1,
-              tip: 'How far the ink carries past the original edge' },
-            { kind: 'range', id: 'spreadDensity', label: 'Density', icon: 'density', min: 0, max: 1, step: 0.01,
-              fmt: pct, tip: 'Solid at the top of the range, a thin halo of droplets at the bottom' }
+              tip: 'Ink carried out past the edge, dissolving as it goes. The stacked ' +
+                   'drop shadows, as real geometry' }
           ]
         },
         {
           title: 'Texture',
           rows: [
-            { kind: 'tiles', id: 'texture',
-              items: function () {
-                var list = [{ value: 'none', label: 'None', thumb: glyph('none'), tip: TEXTURE_TIPS.none }];
-                G.TEXTURE_NAMES.forEach(function (t) {
-                  list.push({ value: t, label: TEXTURE_LABELS[t] || t,
-                              thumb: textureThumb(t), tip: TEXTURE_TIPS[t] || '' });
-                });
-                list.push({ value: 'image', label: 'Import', thumb: glyph('image'),
-                            tip: 'Use an image of your own as the texture' });
-                return list;
-              } },
+            { kind: 'note', text: 'This style prints solid inside the edge.', showIf: 'notexture' },
             { kind: 'range', id: 'textureAmount', label: 'Amount', icon: 'texAmt', min: 0, max: 1, step: 0.01,
-              fmt: pct, showIf: 'texture', tip: 'How much of the texture knocks ink out' },
-            { kind: 'range', id: 'textureScale', label: 'Size', icon: 'texScale', min: 0.5, max: 14, step: 0.1,
-              showIf: 'texture', tip: 'Size of the texture grain' },
-            { kind: 'toggle', id: 'textureInvert', label: 'Invert', icon: 'invert',
-              showIf: 'texture', tip: 'Swap which parts of the texture remove ink' }
-          ]
-        },
-        {
-          title: 'Melt',
-          rows: [
-            { kind: 'note', text: 'Blur the coverage then cut it again. Small specks dissolve, ' +
-              'close neighbours fuse, edges go soft.' },
-            { kind: 'range', id: 'meltRadius', label: 'Blur', icon: 'melt', min: 0, max: 8, step: 0.1,
-              tip: 'How far the blur reaches before the outline is re-cut' },
-            { kind: 'range', id: 'meltCut', label: 'Cutoff', icon: 'cutoff', min: 0.2, max: 0.8, step: 0.01,
-              fmt: pct, tip: 'Where the blurred coverage is cut. Low fattens, high eats away' }
-          ]
-        },
-        {
-          title: 'Quality',
-          rows: [
-            { kind: 'range', id: 'scale', label: 'Effect scale', icon: 'gscale', min: 0.25, max: 4, step: 0.05,
-              fmt: function (v) { return Math.round(v * 100) + '%'; },
-              tip: 'Scales every distance at once, so the look holds on artwork of any size' },
-            { kind: 'range', id: 'pxPerUnit', label: 'Detail', icon: 'detail', min: 1, max: 4.5, step: 0.1,
-              tip: 'Working resolution. Higher resolves finer grain and costs more paths' },
-            { kind: 'range', id: 'detail', label: 'Simplify', icon: 'simplify', min: 0.15, max: 1.5, step: 0.01,
-              tip: 'Contour tolerance. Raise it to cut the number of paths' },
-            { kind: 'number', id: 'seed', label: 'Seed', icon: 'seed', min: 1, max: 999999, scrub: 1,
-              tip: 'Same seed, same result. Change it to re-roll the randomness' }
+              fmt: pct, showIf: 'texture', tip: 'How much of the style’s texture knocks ink out' },
+            { kind: 'button', id: 'ownTexture', label: 'Use an image of yours', icon: 'image',
+              buttonIcon: 'open',
+              tip: 'A scan, a photo of a wall, anything: its light and dark become the texture',
+              action: function () { document.getElementById('textureFile').click(); } }
           ]
         }
       ];
@@ -421,115 +335,66 @@
         {
           title: 'Halftone', id: 'halftoneHead', toggleId: '__on',
           rows: [
-            { kind: 'note', text: 'Screens the artwork into a real CMYK dot pattern. Every ' +
-              'plate exports as one compound path, so the file opens as four objects.' }
+            { kind: 'note', text: 'Screens the artwork into a dot pattern. Each ink ' +
+              'exports as one compound path.' }
           ]
         },
         {
-          title: 'Start here',
+          title: 'Style',
           rows: [
-            { kind: 'tiles', id: 'presetStar', bind: 'preset',
-              items: function () { return halftoneTiles(true); } },
-            { kind: 'note', text: 'Pick one, then change anything below it. ' +
-              'A screen is a starting point, not a lock.' }
+            { kind: 'tiles', id: 'preset', items: function () { return halftoneTiles(); } },
+            { kind: 'note', text: 'Pick one, then tune it below. A screen is a starting ' +
+              'point, not a lock.' }
           ]
-        },
-        {
-          title: 'All screens',
-          rows: [{
-            kind: 'tiles', id: 'preset',
-            items: function () { return halftoneTiles(false); }
-          }]
         },
         {
           title: 'Screen',
           rows: [
             { kind: 'segment', id: 'mode', label: 'Inks', icon: 'mode',
               options: [
-                { value: 'cmyk', label: 'CMYK', tip: 'Full four colour separation' },
-                { value: 'duotone', label: 'Duo', tip: 'Two inks. What most garment prints use' },
-                { value: 'mono', label: 'Mono', tip: 'One ink' }
+                { value: 'mono', label: 'One', tip: 'One ink, in the layer colour. What most garment prints are' },
+                { value: 'duotone', label: 'Two', tip: 'The layer colour for the shadows and a second ink for the rest' },
+                { value: 'cmyk', label: 'Four', tip: 'Cyan, magenta, yellow and black, separated. For white stock' }
               ],
               tip: 'How many inks the screen separates into' },
-            { kind: 'tiles', id: 'pattern',
-              items: function () {
-                return [
-                  { value: 'round', label: 'Round', thumb: glyph('dot'), tip: 'The standard dot' },
-                  { value: 'square', label: 'Square', thumb: glyph('dotSq'), tip: 'Hard cells, reads as digital' },
-                  { value: 'ellipse', label: 'Ellipse', thumb: glyph('dotEl'), tip: 'Chain dots, smoother midtones' },
-                  { value: 'line', label: 'Line', thumb: glyph('dotLn'), tip: 'Bars instead of dots' },
-                  { value: 'cross', label: 'Cross', thumb: glyph('dotX'), tip: 'A plus shape, reads as woven' },
-                  { value: 'diamond', label: 'Diamond', thumb: glyph('dotDi'), tip: 'Rotated squares' }
-                ];
-              } },
+            { kind: 'segment', id: 'pattern', label: 'Dot', icon: 'dot',
+              options: [
+                { value: 'round', label: 'Round', icon: 'dot', tip: 'The standard dot' },
+                { value: 'square', label: 'Square', icon: 'dotSq', tip: 'Hard cells, reads as digital' },
+                { value: 'ellipse', label: 'Ellipse', icon: 'dotEl', tip: 'Chain dots, smoother midtones' },
+                { value: 'line', label: 'Line', icon: 'dotLn', tip: 'Bars instead of dots' },
+                { value: 'cross', label: 'Cross', icon: 'dotX', tip: 'A plus shape, reads as woven' },
+                { value: 'diamond', label: 'Diamond', icon: 'dotDi', tip: 'Rotated squares' }
+              ],
+              tip: 'The shape of each dot' },
             { kind: 'range', id: 'pitch', label: 'Dot size', icon: 'freq', min: 1.5, max: 60, step: 0.1,
               fmt: function (v) { return v.toFixed(1) + 'px'; },
               tip: 'Spacing between dot centres, in artwork pixels. Small is a fine screen ' +
                    'and far more dots. Independent of how big the artwork is' },
-            { kind: 'range', id: 'inkDensity', label: 'Ink density', icon: 'inkDrop', min: 0.2, max: 1.3, step: 0.01,
-              fmt: pct, tip: 'Global multiplier on how much ink each dot carries' },
-            { kind: 'range', id: 'dotGain', label: 'Dot gain', icon: 'gain', min: -1, max: 1, step: 0.01,
-              fmt: pct, tip: 'Paper spreads ink, so midtones print heavier. Positive fattens them' },
-            { kind: 'range', id: 'minDot', label: 'Min dot', icon: 'dot', min: 0, max: 0.3, step: 0.005,
-              fmt: pct, tip: 'Drop dots smaller than this. Raise it to stop highlights turning into dust' },
-            { kind: 'colour', id: 'paper', label: 'Paper', icon: 'paper',
-              tip: 'The ground the ink prints onto. Travels with the exported file' }
+            { kind: 'range', id: 'gain', label: 'Weight', icon: 'gain', min: -1, max: 1, step: 0.01,
+              fmt: pct, tip: 'Heavier or lighter than the picture asks for. Positive fattens ' +
+                   'the midtones, the way real paper does' },
+            { kind: 'range', id: 'grit', label: 'Grit', icon: 'patchy', min: 0, max: 1, step: 0.01,
+              fmt: pct, tip: 'How far from a clean dot. Zero is exact; up, the dots drift, ' +
+                   'fray and the paper starves them in patches' },
+            { kind: 'range', id: 'minDot', label: 'Smallest dot', icon: 'dot', min: 0, max: 0.3, step: 0.005,
+              fmt: pct, tip: 'Drop dots smaller than this share of a cell. Raise it to stop ' +
+                   'highlights turning into dust a screen cannot hold' },
+            { kind: 'range', id: 'angle', label: 'Angle', icon: 'rotate', min: 0, max: 90, step: 1,
+              fmt: function (v) { return Math.round(v) + '°'; },
+              tip: 'The screen angle. Forty five is the classic; the other inks sit ' +
+                   'thirty degrees apart from it so they never moire' }
           ]
         },
         {
-          title: 'Paper and ink',
+          title: 'Second ink',
+          showIf: 'duotone',
           rows: [
-            { kind: 'range', id: 'roughness', label: 'Roughness', icon: 'patchy', min: 0, max: 1, step: 0.01,
-              fmt: pct, tip: 'Jitters each dot off its exact position and size' },
-            { kind: 'range', id: 'fuzziness', label: 'Fuzziness', icon: 'grain', min: 0, max: 1, step: 0.01,
-              fmt: pct, tip: 'How ragged each dot outline is. Zero is a clean arc' },
-            { kind: 'range', id: 'paperFibre', label: 'Paper fibre', icon: 'paper', min: 0, max: 1, step: 0.01,
-              fmt: pct, tip: 'A slow field that starves ink in patches, like absorbent stock' },
-            { kind: 'range', id: 'inkTexture', label: 'Ink texture', icon: 'inkDrop', min: 0, max: 1, step: 0.01,
-              fmt: pct, tip: 'Mottling inside each dot' }
-          ]
-        },
-        {
-          title: 'Separation',
-          rows: [
-            { kind: 'range', id: 'gcr', label: 'Black gen', icon: 'gcr', min: 0, max: 1, step: 0.01,
-              fmt: pct, showIf: 'cmyk',
-              tip: 'How much of the common grey moves into the black plate. High keeps shadows clean' },
-            { kind: 'select', id: 'anglePreset', label: 'Angles', icon: 'rotate',
-              options: [
-                { value: 'classic', label: 'Classic 15/75/0/45' },
-                { value: 'reference', label: 'Offset 15/-15/0/45' },
-                { value: 'flat', label: 'All zero' }
-              ],
-              tip: 'Screen angles. Thirty degrees apart is what stops a moire pattern forming' },
-            { kind: 'number', id: 'angles.c', label: 'Cyan', icon: 'rotate', min: -90, max: 90, scrub: 0.5, showIf: 'cmyk' },
-            { kind: 'number', id: 'angles.m', label: 'Magenta', icon: 'rotate', min: -90, max: 90, scrub: 0.5,
-              tip: 'Screen angle for the magenta plate, and for the colour ink in duotone' },
-            { kind: 'number', id: 'angles.y', label: 'Yellow', icon: 'rotate', min: -90, max: 90, scrub: 0.5, showIf: 'cmyk' },
-            { kind: 'number', id: 'angles.k', label: 'Black', icon: 'rotate', min: -90, max: 90, scrub: 0.5,
-              tip: 'Screen angle for the black plate, and for the dark ink in duotone and mono' },
-            { kind: 'toggle', id: 'channels.c', label: 'Cyan plate', icon: 'eye', showIf: 'cmyk' },
-            { kind: 'toggle', id: 'channels.m', label: 'Magenta plate', icon: 'eye', showIf: 'cmyk' },
-            { kind: 'toggle', id: 'channels.y', label: 'Yellow plate', icon: 'eye', showIf: 'cmyk' },
-            { kind: 'toggle', id: 'channels.k', label: 'Black plate', icon: 'eye', showIf: 'cmyk' },
-            { kind: 'colour', id: 'duotone.0', label: 'Ink one', icon: 'fill', showIf: 'duotone',
-              tip: 'The dark ink' },
-            { kind: 'colour', id: 'duotone.1', label: 'Ink two', icon: 'fill', showIf: 'duotone',
-              tip: 'The second ink. Ignored in mono' },
-            { kind: 'range', id: 'duotoneSplit', label: 'Split', icon: 'gcr',
-              min: 0.1, max: 0.85, step: 0.01, fmt: pct, showIf: 'duotone',
-              tip: 'Where the dark ink starts. The colour carries the whole range; ' +
-                   'the dark ink only comes in past this and the two overprint' }
-          ]
-        },
-        {
-          title: 'Quality',
-          rows: [
-            { kind: 'range', id: 'sampleScale', label: 'Sampling', icon: 'detail', min: 0.4, max: 2.5, step: 0.05,
-              fmt: function (v) { return Math.round(v * 100) + '%'; },
-              tip: 'How finely the artwork is measured before screening. Raise it if fine detail is lost' },
-            { kind: 'number', id: 'seed', label: 'Seed', icon: 'seed', min: 1, max: 999999, scrub: 1,
-              tip: 'Same seed, same result' }
+            { kind: 'colour', id: 'ink2', label: 'Colour', icon: 'inkDrop',
+              tip: 'The second ink. It carries the whole range; the layer colour comes in for the shadows' },
+            { kind: 'range', id: 'split', label: 'Split', icon: 'gcr',
+              min: 0.1, max: 0.85, step: 0.01, fmt: pct,
+              tip: 'Where the dark ink starts. Low and the shadows fill early; high and the second ink carries most of the picture' }
           ]
         }
       ];
@@ -541,6 +406,4 @@
   root.SPECS = SPECS;
   root.DITHER_PRESETS = DITHER_PRESETS;
   root.HALFTONE_PRESETS = HALFTONE_PRESETS;
-  root.TEXTURE_LABELS = TEXTURE_LABELS;
-  root.textureThumb = textureThumb;
 })(window);

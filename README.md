@@ -27,7 +27,7 @@ Runs on your own Mac. Nothing is uploaded. No account, no subscription.
 | | | |
 |:--:|:--:|:--:|
 | <img src="docs/media/halftone-cmyk.png" width="240" alt=""> | <img src="docs/media/halftone-mono.png" width="240" alt=""> | <img src="docs/media/dither.png" width="240" alt=""> |
-| **Four colour halftone**<br><sub>Real screen angles, real dot gain</sub> | **One colour halftone**<br><sub>For a single screen on a tee</sub> | **Ink erosion and grunge**<br><sub>Nine textures, spread, melt</sub> |
+| **Four colour halftone**<br><sub>Real screen angles, real dot gain</sub> | **One colour halftone**<br><sub>For a single screen on a tee</sub> | **Ink erosion and grunge**<br><sub>Six styles, five sliders</sub> |
 
 <img src="docs/media/warp.png" width="260" align="right" alt="">
 
@@ -39,20 +39,22 @@ Cmd to ignore that.
 
 ### Halftone
 
-A printing RIP done as geometry, not as a filter. Six dot shapes, real screen
-angles, adjustable black generation, paper fibre and ink texture. CMYK, duotone
-or one colour. Sized by **dot pitch in pixels**, so a screen you tuned on a logo
-behaves the same on a 3000px photo.
+A printing RIP done as geometry, not as a filter. One, two or four inks, six dot
+shapes, real screen angles and real dot gain. Five sliders: dot size, weight,
+grit, smallest dot, angle. Sized by **dot pitch in pixels**, so a screen you
+tuned on a logo behaves the same on a 3000px photo.
 
 ### Dither
 
-Signed distance field ink erosion: spatter, pitting, blotching, spread past the
-edge, nine grunge textures and a melt pass. The thing that makes a print look
-pulled through a screen rather than printed by a machine.
+Signed distance field ink erosion. Six styles, each a different texture, and
+five sliders under them: threshold, erosion, grain, spatter, spread. The thing
+that makes a print look pulled through a screen rather than printed by a
+machine.
 
-**Start with One colour.** Three recommended styles sit above the full list in
-both the Dither and the Halftone panel, and picking one changes every slider
-under it, which you are then free to move.
+**Pick a style, then move the sliders.** Both panels open with the styles, and
+picking one sets every slider under it, which you are then free to move. There
+is no long list underneath: five halftone screens and six dither styles, each a
+different kind of print rather than a different setting.
 
 The one that matters on a photo is **Threshold**: it decides how much of the
 picture becomes ink before any edge work happens, and it is measured off the
@@ -65,9 +67,15 @@ third of the picture is ink, capped so that a bright photograph does not reach u
 into the sky behind the subject. A style then applies as the offset it is from
 the middle, so choosing a look does not throw the measurement away.
 
-Ink traced out of a photograph is dark ink, and it arrives on paper. It used to
-arrive white, on the dark canvas, which is how a correct trace could look like
-one white blob.
+### Ink and canvas
+
+One **Ink** colour, at the top of the panel, and every effect prints in it: the
+dither, the warp, and a one or two colour halftone. One **Canvas** colour behind
+the artwork, which is the garment. Nothing puts paper under the artwork; what is
+on the canvas is what the file is. A photo arrives in white ink on the dark
+canvas, which is a print on a black tee, and both are one swatch away from
+anything else. **Invert** prints the light parts of a photograph instead of the
+dark, which is what a light ink on a dark garment wants.
 
 ### Background removal
 

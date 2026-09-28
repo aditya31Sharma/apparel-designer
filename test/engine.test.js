@@ -184,14 +184,17 @@ console.log('\nsvg export');
     name: 'ht', matrix: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 },
     bbox: { x: 0, y: 0, width: w, height: h },
     plates: res.channels, pattern: 'round', fuzziness: 0, seed: 1,
-    paper: '#ffffff'
+    blend: 'multiply'
   }];
   var hs = SvgOut.build(plateRenders, {});
   ok('plates come out as one path each',
     (hs.match(/<path /g) || []).length === res.channels.length);
-  ok('plates are grouped to multiply', /mix-blend-mode:multiply/.test(hs));
-  ok('the paper travels with the file', /<rect [^>]*fill="#ffffff"/.test(hs));
+  ok('process plates are grouped to multiply', /mix-blend-mode:multiply/.test(hs));
+  ok('no paper in the file', !/<rect /.test(hs));
   ok('every ink is named', (hs.match(/data-ink="/g) || []).length === res.channels.length);
+  // Spot inks are opaque and sit on top of each other, as they do on a garment.
+  var spot = SvgOut.build([Object.assign({}, plateRenders[0], { blend: 'source-over' })], {});
+  ok('spot plates are not blended', !/mix-blend-mode/.test(spot) && /<g>/.test(spot));
 
   var sep = SvgOut.build(plateRenders, { separations: true });
   ok('separations put each ink in its own named group',

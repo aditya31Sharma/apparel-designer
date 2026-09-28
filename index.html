@@ -46,7 +46,7 @@
   <button class="tbtn on" id="gridBtn" data-icon="gridIcon"
     data-tip="Pixel grid|Show the real coordinate grid"></button>
   <button class="tbtn" id="bgBtn" data-icon="canvas"
-    data-tip="Canvas|Dark, light or mid grey"></button>
+    data-tip="Canvas|Dark, light or mid grey. Any colour: the Canvas swatch in the panel"></button>
 </header>
 
 <main>
@@ -75,6 +75,7 @@
       <div id="panel-warp" class="epanel"></div>
       <div id="panel-dither" class="epanel"></div>
       <div id="panel-halftone" class="epanel"></div>
+      <div id="panel-more"></div>
       <div class="sec">
         <h2>Snapping</h2>
         <div class="pr" data-tip="Pixel grid|Round the warp handles to whole pixels">
@@ -92,7 +93,6 @@
         <div class="note">Hold Cmd while dragging to ignore snapping. Arrows nudge 1px,
           Shift 10px, Backspace resets a warp corner.</div>
       </div>
-      <div id="bgState" class="note"></div>
     </div>
 
     <div class="foot">

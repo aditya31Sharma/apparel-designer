@@ -152,10 +152,6 @@
           items: out,
           bbox: Geom.unionBounds(out),
           matte: input.matte,
-          // Ink traced out of a photograph is dark ink, and dark ink on a dark
-          // canvas is nothing. The ground travels with it, the way it does for
-          // a screen, so what is on the canvas is what gets printed.
-          paper: traced ? '#ffffff' : null,
           stats: { shapes: kept, points: points }
         };
       });
@@ -164,11 +160,43 @@
 
   /* ---------- halftone ---------- */
 
+  /* The engine has eleven knobs and every one of them does something, but
+   * nobody could tell which five of them mattered from a panel of twenty
+   * controls. So the panel has five, and this is where they become what the
+   * engine takes. Four of the engine's knobs are flavours of the same thing,
+   * a dot that is not quite where or what it should be, and they move together
+   * under one Grit dial. The rest are settled here because moving them never
+   * helped. */
+  function halftoneOptions(p, freq) {
+    var grit = Math.max(0, Math.min(1, p.grit || 0));
+    var a = p.angle === undefined ? 45 : p.angle;
+    return {
+      frequency: freq,
+      pattern: p.pattern || 'round',
+      inkDensity: 1,
+      dotGain: p.gain || 0,
+      roughness: grit * 0.4,
+      fuzziness: grit * 0.45,
+      paperFibre: grit * 0.45,
+      inkTexture: grit * 0.4,
+      gcr: p.mode === 'cmyk' ? 0.9 : 1,
+      minDot: p.minDot === undefined ? 0.05 : p.minDot,
+      seed: 1,
+      // Thirty degrees apart is what keeps four screens from forming a moire,
+      // and yellow sits where the eye forgives it. One number turns them all.
+      angles: { k: a, c: a - 30, m: a + 30, y: a - 45 },
+      channels: { c: 1, m: 1, y: 1, k: 1 },
+      mode: p.mode || 'mono',
+      duotoneSplit: p.split === undefined ? 0.45 : p.split
+    };
+  }
+
   E.register({
     id: 'halftone',
     label: 'Halftone',
     icon: 'halftone',
-    tip: 'Screen the artwork into a CMYK dot pattern, as real vectors',
+    tip: 'Screen the artwork into a dot pattern, as real vectors',
+    engineOptions: halftoneOptions,
     defaults: {
       /* Dot pitch in artwork pixels, not cells across the artwork.
        *
@@ -177,57 +205,40 @@
        * 2600px photo. Pitch is what a designer actually means by "a five pixel
        * dot", and it holds whatever the artwork is. Frequency is derived from
        * it at run time. */
-      pitch: 5,
+      pitch: 6,
       pattern: 'round',
-      inkDensity: 0.9,
-      dotGain: 0,
-      roughness: 0,
-      fuzziness: 0,
-      paperFibre: 0,
-      inkTexture: 0,
-      gcr: 1,
-      minDot: 0.06,
-      seed: 1,
-      mode: 'cmyk',                              // cmyk | duotone | mono
-      anglePreset: 'classic',
-      angles: { c: 15, m: 75, y: 0, k: 45 },
-      channels: { c: true, m: true, y: true, k: true },
-      duotone: ['#1b1b1b', '#e5352b'],
-      duotoneSplit: 0.45,
-      paper: '#ffffff',                          // ground the ink multiplies onto
-      sampleScale: 1,                            // raster resolution multiplier
-      preset: ''
+      gain: 0.3,                  // heavier or lighter than the picture asks for
+      /* Zero: a clean arc per dot. Any grit at all turns every dot into a
+       * polygon of up to twenty nine points, which is three to four times
+       * the file and the draw time, so it is something you turn up rather
+       * than something you start with. */
+      grit: 0,
+      minDot: 0.05,               // dots smaller than this fraction of a cell are dropped
+      angle: 45,                  // the screen angle; the others follow it
+      mode: 'mono',               // mono | duotone | cmyk
+      ink2: '#e5352b',            // the second ink, in duotone
+      split: 0.45,                // where the dark ink comes in, in duotone
+      preset: 'onecolour'         // the defaults are the first tile, and it says so
     },
     run: function (input, p, ctx) {
       if (!ctx.rasterize) return null;
-
-      // Halftone needs pixels. An imported bitmap gives them directly; vector
-      // artwork gets rendered once, at a resolution tied to the screen pitch so
-      // each cell still has something to average over.
-      var tR = now();
-      var px = ctx.rasterize(input, Object.assign({}, p,
-        { frequency: frequencyOf(p, input.bbox) }), ctx);
-      if (!px || !px.w || !px.h) return null;
-      var msRaster = Math.round(now() - tR);
-
-      var tS = now();
-      var channels = channelsFor(p);
 
       /* The screen frequency is the effect. Coarsening it for a preview moves
        * every dot, so the thing on screen while the slider is held has to be
        * screened at the frequency the file will be. */
       var freq = frequencyOf(p, input.bbox);
+      var o = halftoneOptions(p, freq);
 
-      var res = H.screen(px.data, px.w, px.h, {
-        frequency: freq, pattern: p.pattern, inkDensity: p.inkDensity,
-        dotGain: p.dotGain, roughness: p.roughness, fuzziness: p.fuzziness,
-        paperFibre: p.paperFibre, inkTexture: p.inkTexture,
-        gcr: p.mode === 'mono' ? 1 : p.gcr,
-        minDot: p.minDot, seed: p.seed,
-        angles: p.angles, channels: channels,
-        mode: p.mode, duotoneSplit: p.duotoneSplit
-      });
+      // Halftone needs pixels. An imported bitmap gives them directly; vector
+      // artwork gets rendered once, at a resolution tied to the screen pitch so
+      // each cell still has something to average over.
+      var tR = now();
+      var px = ctx.rasterize(input, { frequency: freq, mode: o.mode, sampleScale: 1 }, ctx);
+      if (!px || !px.w || !px.h) return null;
+      var msRaster = Math.round(now() - tR);
 
+      var tS = now();
+      var res = H.screen(px.data, px.w, px.h, Object.assign({ invert: !!input.invert }, o));
       var msScreen = Math.round(now() - tS);
 
       // Dots come back in bitmap pixels; put them back into artwork units.
@@ -235,11 +246,11 @@
       var k = 1 / px.scale;
       var plates = res.channels.map(function (ch) {
         var d = ch.dots, out = new Float32Array(d.length);
-        for (var o = 0; o < d.length; o += H.STRIDE) {
-          out[o] = px.x + d[o] * k;
-          out[o + 1] = px.y + d[o + 1] * k;
-          out[o + 2] = d[o + 2] * k;
-          out[o + 3] = d[o + 3];
+        for (var q = 0; q < d.length; q += H.STRIDE) {
+          out[q] = px.x + d[q] * k;
+          out[q + 1] = px.y + d[q + 1] * k;
+          out[q + 2] = d[q + 2] * k;
+          out[q + 3] = d[q + 3];
         }
         return { key: ch.key, label: ch.label, colour: inkColour(p, ch.key), dots: out };
       });
@@ -247,10 +258,10 @@
       return {
         items: [],
         plates: plates,
-        paper: p.paper,
-        pattern: p.pattern,
-        fuzziness: p.fuzziness,
-        seed: p.seed,
+        mode: o.mode,
+        pattern: o.pattern,
+        fuzziness: o.fuzziness,
+        seed: o.seed,
         bbox: input.bbox,
         matte: input.matte,
         stats: { dots: res.stats.dots, plates: plates.length,
@@ -278,21 +289,12 @@
     return Math.max(6, Math.min(900, Math.round(w / pitch)));
   }
 
-  /* Only meaningful in CMYK. Mono and duotone build their own planes from
-   * perceptual tone, because the black plate of a saturated colour is empty and
-   * a red logo would print as blank paper. */
-  function channelsFor(p) {
-    if (p.mode === 'mono') return { c: 0, m: 0, y: 0, k: 1 };
-    if (p.mode === 'duotone') return { c: 0, m: 1, y: 0, k: 1 };
-    return {
-      c: p.channels.c ? 1 : 0, m: p.channels.m ? 1 : 0,
-      y: p.channels.y ? 1 : 0, k: p.channels.k ? 1 : 0
-    };
-  }
-
+  /* Process inks carry their own colours. A one or two colour screen prints in
+   * the layer's ink, which an effect never sees: the plate goes out marked and
+   * the app paints it, so changing the ink is a repaint and not a screen. */
   function inkColour(p, key) {
-    if (p.mode === 'mono') return p.duotone[0];
-    if (p.mode === 'duotone') return key === 'k' ? p.duotone[0] : p.duotone[1];
+    if (p.mode === 'duotone' && key === 'm') return p.ink2 || '#e5352b';
+    if (p.mode !== 'cmyk') return '#000000';
     var found = H.CHANNELS.filter(function (c) { return c.key === key; })[0];
     return found ? found.colour : '#000000';
   }

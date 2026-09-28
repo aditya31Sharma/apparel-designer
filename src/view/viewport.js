@@ -91,8 +91,29 @@
       dirty = false;
     }
 
+    /* The grid is drawn in the canvas colour, pushed a little towards the
+     * other end of the range, so it reads on a white canvas as quietly as it
+     * does on a dark one instead of turning into a black mesh. */
+    function shade(hex, amount) {
+      var m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+      if (!m) return amount > 0 ? '#282828' : '#d8d8d8';
+      var n = parseInt(m[1], 16);
+      var ch = [n >> 16, (n >> 8) & 255, n & 255].map(function (v) {
+        return Math.max(0, Math.min(255, Math.round(v + amount * 255)));
+      });
+      return '#' + ch.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
+    }
+
+    function isLight(hex) {
+      var m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+      if (!m) return false;
+      var n = parseInt(m[1], 16);
+      return (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) > 128;
+    }
+
     function drawGrid(c, s, mx, my) {
       var k = vp.view.k;
+      var dir = isLight(vp.bg) ? -1 : 1;
       var step = vp.gridStep;
       // Step up in 1-2-5 decades until the lines are at least 9px apart.
       var target = 9 / k;
@@ -113,7 +134,7 @@
       c.beginPath();
       for (var x = minor; x <= x1; x += g) { c.moveTo(x, y0); c.lineTo(x, y1); }
       for (var y = Math.floor(y0 / g) * g; y <= y1; y += g) { c.moveTo(x0, y); c.lineTo(x1, y); }
-      c.strokeStyle = o.gridColour || '#282828';
+      c.strokeStyle = o.gridColour || shade(vp.bg, 0.04 * dir);
       c.stroke();
 
       // Every tenth line reads darker, which is what makes the grid scannable.
@@ -121,14 +142,14 @@
       c.beginPath();
       for (x = Math.floor(x0 / G) * G; x <= x1; x += G) { c.moveTo(x, y0); c.lineTo(x, y1); }
       for (y = Math.floor(y0 / G) * G; y <= y1; y += G) { c.moveTo(x0, y); c.lineTo(x1, y); }
-      c.strokeStyle = o.gridColour10 || '#333';
+      c.strokeStyle = o.gridColour10 || shade(vp.bg, 0.08 * dir);
       c.stroke();
 
       // The document origin
       c.beginPath();
       c.moveTo(0, y0); c.lineTo(0, y1);
       c.moveTo(x0, 0); c.lineTo(x1, 0);
-      c.strokeStyle = o.axisColour || '#3a4a5e';
+      c.strokeStyle = o.axisColour || (dir > 0 ? '#3a4a5e' : '#7d93b3');
       c.stroke();
       c.restore();
     }
@@ -145,15 +166,6 @@
         var m = L.matrix;
         c.transform(m.a, m.b, m.c, m.d, m.e, m.f);
         c.globalAlpha = L.opacity === undefined ? 1 : L.opacity;
-
-        // Ink is subtractive and needs something to sit on. Without the paper
-        // the plates multiply straight onto the canvas and every colour turns
-        // to mud, and traced ink is dark on dark, which is not what the file
-        // will look like either way.
-        if (L.paper && L.paper !== 'none' && L.bbox) {
-          c.fillStyle = L.paper;
-          c.fillRect(L.bbox.x, L.bbox.y, L.bbox.width, L.bbox.height);
-        }
 
         // A photo nothing has been applied to yet. Drawn at its frame, under
         // the same matrix as everything else, so moving and rotating it work
@@ -184,10 +196,13 @@
       c.restore();
     }
 
-    /* Each ink is drawn on a layer of its own with ordinary compositing, and
-     * the four layers are multiplied down at the end.
+    /* Spot inks are opaque and sit straight on the canvas, later plates over
+     * earlier ones, which is what two inks do on a garment. Four colour
+     * process inks are translucent and overprint, so those plates are each
+     * drawn on a layer of their own with ordinary compositing and the four
+     * layers multiplied down at the end.
      *
-     * Two reasons, and the second is the one that matters.
+     * Two reasons for the layers, and the second is the one that matters.
      *
      * Multiply is priced per draw call. A screen has to be handed to the
      * canvas in chunks, because piling a hundred thousand subpaths into one
@@ -266,14 +281,15 @@
     }
 
     function drawPlates(c, L) {
+      var op = L.blend || 'source-over';
       var n = 0;
       L.plates.forEach(function (pl) { n += pl.paths.length; });
 
-      // One fill per ink needs no layer, and allocating one would cost more
-      // than it saves.
-      if (n <= L.plates.length) {
+      // Opaque ink needs no layer, and neither does one fill per ink:
+      // allocating one would cost more than it saves.
+      if (op === 'source-over' || n <= L.plates.length) {
         var prev = c.globalCompositeOperation;
-        c.globalCompositeOperation = 'multiply';
+        c.globalCompositeOperation = op;
         L.plates.forEach(function (pl) {
           c.fillStyle = pl.colour;
           for (var q = 0; q < pl.paths.length; q++) c.fill(pl.paths[q]);
@@ -295,7 +311,7 @@
 
         c.save();
         c.setTransform(1, 0, 0, 1, 0, 0);
-        c.globalCompositeOperation = 'multiply';
+        c.globalCompositeOperation = op;
         c.globalAlpha = alpha;
         c.drawImage(plateLayer, 0, 0);
         c.restore();

@@ -130,7 +130,7 @@ const SCRIPT = `(async function(){
   await measureScene('vector_halftone', function(){
     L.effects.forEach(function(e){ e.on = false; });
     Doc.effect(L,'halftone').on = true;
-    Doc.effect(L,'halftone').params.frequency = 140;
+    Doc.effect(L,'halftone').params.pitch = 4.3;
   });
 
   var P = await loadFile('doom-test.jpg','image/jpeg');
@@ -141,7 +141,7 @@ const SCRIPT = `(async function(){
   await measureScene('photo_halftone_fine', function(){
     P.effects.forEach(function(e){ e.on = false; });
     Doc.effect(P,'halftone').on = true;
-    Doc.effect(P,'halftone').params.frequency = 320;
+    Doc.effect(P,'halftone').params.pitch = 3.4;
   });
   await measureScene('photo_dither_texture', function(){
     P.effects.forEach(function(e){ e.on = false; });

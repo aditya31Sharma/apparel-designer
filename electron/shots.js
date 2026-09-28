@@ -62,6 +62,10 @@ const DRIVE = `(async function(step){
   // from the one before, which is exactly the bug this comment replaces.
   var vp = window.App.viewport();
   vp.bg = step.bg || '#1e1e1e';
+  // The Canvas swatch in the panel reads the view, so it has to be synced
+  // after the view is set or the shot shows a swatch that disagrees with
+  // the canvas behind it.
+  window.App.syncPanels();
   if (step.grid === false && vp.grid) document.getElementById('gridBtn').click();
   vp.invalidate();
   document.getElementById('overlay').style.display = step.handles === false ? 'none' : '';
@@ -123,18 +127,21 @@ const PRINT = { bg: '#f2f2f2', grid: false, handles: false,
 const DETAIL = { detail: { cx: 0.50, cy: 0.27, w: 0.80 }, art: true };
 
 const SHOTS = [
-  Object.assign({ name: 'hero', effect: 'halftone', tool: 'halftone' }, WIDE),
+  // Four colour on a light canvas: the one screen that is about colour, on
+  // the one ground it is for.
+  Object.assign({ name: 'hero', effect: 'halftone', tool: 'halftone',
+                  preset: 'fourcolour', bg: '#f2f2f2' }, WIDE),
 
   Object.assign({ name: 'halftone-cmyk', effect: 'halftone', tool: 'halftone',
-                  preset: 'comic', params: { pitch: 6 } }, SUBJECT, PRINT, DETAIL,
+                  preset: 'fourcolour', params: { pitch: 6 } }, SUBJECT, PRINT, DETAIL,
                 { paint: { fill: '#141414', useSourceColours: true } }),
 
   Object.assign({ name: 'halftone-mono', effect: 'halftone', tool: 'halftone',
-                  preset: 'newsprint',
-                  params: { pitch: 5, mode: 'mono' } }, SUBJECT, PRINT, DETAIL),
+                  preset: 'onecolour',
+                  params: { pitch: 5, grit: 0.4 } }, SUBJECT, PRINT, DETAIL),
 
   Object.assign({ name: 'dither', effect: 'dither', tool: 'dither',
-                  preset: 'charcoal',
+                  preset: 'distressed',
                   params: { imageCut: 0.34, imageLevels: 1 } }, SUBJECT, PRINT, DETAIL),
 
   // 'free' rather than the default arc: the point of the tile is the four

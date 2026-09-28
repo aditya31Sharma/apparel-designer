@@ -51,17 +51,17 @@ const SCRIPT = `(async function(){
       Doc.effect(L,'halftone').on = true;
       Object.assign(Doc.effect(L,'halftone').params, window.HALFTONE_PRESETS.poster.params);
     });
-    await shot(tag+'/halftone-riso', L, function(){
+    await shot(tag+'/halftone-twocolour', L, function(){
       Doc.effect(L,'halftone').on = true;
-      Object.assign(Doc.effect(L,'halftone').params, window.HALFTONE_PRESETS.riso.params);
+      Object.assign(Doc.effect(L,'halftone').params, window.HALFTONE_PRESETS.twocolour.params);
     });
     await shot(tag+'/dither', L, function(){
       Doc.effect(L,'dither').on = true;
       Object.assign(Doc.effect(L,'dither').params, window.DITHER_PRESETS.spray.params);
     });
-    await shot(tag+'/dither-charcoal', L, function(){
+    await shot(tag+'/dither-distressed', L, function(){
       Doc.effect(L,'dither').on = true;
-      Object.assign(Doc.effect(L,'dither').params, window.DITHER_PRESETS.charcoal.params);
+      Object.assign(Doc.effect(L,'dither').params, window.DITHER_PRESETS.distressed.params);
     });
   }
 

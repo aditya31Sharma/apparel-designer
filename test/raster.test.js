@@ -56,6 +56,16 @@ console.log('\nresample');
   ok('half transparent black lands mid grey',
     Math.abs(halfA[0] - 128) < 3, halfA[0]);
 
+  // Inverted, the ground is dark, so a transparent area still takes no ink.
+  var dark = R.resample(solid(80, 80, 255, 0, 0, 0), 40, 40, 0);
+  ok('a dark ground composites transparent to black',
+    every(dark, function (r, g, b) { return r === 0 && g === 0 && b === 0; }),
+    'got ' + [dark[0], dark[1], dark[2]].join(','));
+  var m = { w: 2, h: 2, mask: new Uint8Array([0, 0, 0, 0]) };
+  var knocked = R.resample(solid(8, 8, 90, 90, 90), 4, 4);
+  R.applyMatte(knocked, 4, 4, m, 0);
+  ok('a matte knocks out to the ground it is given', knocked[0] === 0 && knocked[1] === 0);
+
   // A checkerboard must average, not alias to one colour.
   var w = 64, h = 64, d = new Uint8ClampedArray(w * h * 4);
   for (var y = 0; y < h; y++) {

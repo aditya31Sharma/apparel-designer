@@ -224,6 +224,20 @@ console.log('\none and two colour modes');
   ok('mono prints yellow light, because yellow is light', yellowMono < 0.2, yellowMono.toFixed(2));
   ok('mono ranks red darker than yellow, as the eye does', redMono > yellowMono);
 
+  /* Inverted, ink follows lightness: a light ink on a dark garment prints the
+   * highlights. Four colour is a positive by definition and ignores it. */
+  var yellowNeg = inkOf(H.screen(flat2(255, 255, 0), w, h,
+    Object.assign({ mode: 'mono', invert: true }, base)));
+  ok('inverted mono prints yellow heavy', yellowNeg > 0.6, yellowNeg.toFixed(2));
+  var clearNeg = H.screen(flat(w, h, 255, 255, 255, 0), w, h,
+    Object.assign({ mode: 'mono', invert: true }, base));
+  ok('inverted, transparent still takes no ink', clearNeg.channels[0].dots.length === 0,
+    clearNeg.channels[0].dots.length);
+  var cmykPos = H.screen(flat2(255, 255, 0), w, h, Object.assign({ mode: 'cmyk' }, base));
+  var cmykNeg = H.screen(flat2(255, 255, 0), w, h, Object.assign({ mode: 'cmyk', invert: true }, base));
+  ok('four colour ignores invert',
+    cmykPos.channels[2].dots.length === cmykNeg.channels[2].dots.length);
+
   var blackMono = inkOf(H.screen(flat2(0, 0, 0), w, h, Object.assign({ mode: 'mono' }, base)));
   var whiteMono = inkOf(H.screen(flat2(255, 255, 255), w, h, Object.assign({ mode: 'mono' }, base)));
   ok('mono covers black', blackMono > 0.9, blackMono.toFixed(2));

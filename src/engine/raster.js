@@ -46,6 +46,14 @@
     var stillTheFrame = input.items && input.items.length &&
       input.items.every(function (i) { return i.frame; });
 
+    /* Which way round the tone runs. A light ink on a dark garment prints the
+     * light parts of a picture, so everything transparent or knocked out is
+     * composited onto a dark ground instead of a white one: on white it would
+     * read as the brightest thing in the frame and take all the ink. Four
+     * colour process is a positive by definition and ignores it. */
+    var inv = !!input.invert && params.mode !== 'cmyk';
+    var ground = inv ? 0 : 255;
+
     var data;
     if (input.pixels && (stillTheFrame || !input.items.length)) {
       /* Straight from the numbers. Routing a photo through a canvas only to
@@ -53,11 +61,11 @@
        * drawing puts the surface on the GPU and getImageData then has to stall
        * the pipeline to drag it back. The pixels are already here, so resample
        * them where they are and never touch a canvas. */
-      data = resample(input.pixels, w, h);
+      data = resample(input.pixels, w, h, ground);
     } else {
       var c = canvasOf(w, h);
       var g = c.getContext('2d', { willReadFrequently: true });
-      g.fillStyle = '#ffffff';
+      g.fillStyle = inv ? '#000000' : '#ffffff';
       g.fillRect(0, 0, w, h);
       g.save();
       g.scale(scale, scale);
@@ -65,12 +73,19 @@
       if (input.bitmap) {
         g.drawImage(input.bitmap, b.x, b.y, b.width, b.height);
       } else {
+        /* One and two colour screens work from coverage: a shape is ink
+         * wherever it is, whatever colour the file painted it. Screening the
+         * fill as tone meant a white logo screened to nothing and a pink one
+         * to a forty per cent tint, and neither is a print of the logo. Four
+         * colour separates the colours, which is what it is for. */
+        var flat = params.mode !== 'cmyk';
+        var inkColour = inv ? '#ffffff' : '#000000';
         input.items.forEach(function (it) {
           var p = root.Geom ? root.Geom.itemPath2D(it) : new Path2D(it.d);
-          if (it.fill && it.fill !== 'none') { g.fillStyle = it.fill; g.fill(p); }
-          else if (!it.stroke || it.stroke === 'none') { g.fillStyle = '#000000'; g.fill(p); }
+          if (it.fill && it.fill !== 'none') { g.fillStyle = flat ? inkColour : it.fill; g.fill(p); }
+          else if (!it.stroke || it.stroke === 'none') { g.fillStyle = inkColour; g.fill(p); }
           if (it.stroke && it.stroke !== 'none' && it.strokeWidth > 0) {
-            g.strokeStyle = it.stroke; g.lineWidth = it.strokeWidth;
+            g.strokeStyle = flat ? inkColour : it.stroke; g.lineWidth = it.strokeWidth;
             g.lineJoin = 'round'; g.lineCap = 'round';
             g.stroke(p);
           }
@@ -80,15 +95,15 @@
       data = g.getImageData(0, 0, w, h).data;
     }
 
-    // A matte from background removal knocks the background back to paper, so
-    // the screen genuinely stops putting ink there.
-    if (input.matte) applyMatte(data, w, h, input.matte);
+    // A matte from background removal knocks the background back to the
+    // ground, so the screen genuinely stops putting ink there.
+    if (input.matte) applyMatte(data, w, h, input.matte, ground);
 
     return { data: data, w: w, h: h, scale: scale, x: b.x, y: b.y };
   }
 
-  /* Resample a photo to the working size, compositing onto white so a
-   * transparent edge does not drag its colour in.
+  /* Resample a photo to the working size, compositing onto the ground (white
+   * unless told otherwise) so a transparent edge does not drag its colour in.
    *
    * Walks destination pixels rather than source ones. Walking the source and
    * scattering into the destination is faster to write and silently wrong the
@@ -96,8 +111,9 @@
    * happen to catch no source pixel keep their initial value, which came out as
    * black speckle over everything screened above 1:1.
    */
-  function resample(px, w, h) {
+  function resample(px, w, h, ground) {
     var src = px.data, sw = px.w, sh = px.h;
+    var gv = ground === undefined ? 255 : ground;
     var out = new Uint8ClampedArray(w * h * 4);
     var xr = sw / w, yr = sh / h;
 
@@ -118,9 +134,9 @@
           for (var sx = x0; sx < x1; sx++) {
             var si = row + sx * 4;
             var a = src[si + 3] / 255;
-            r += src[si] * a + 255 * (1 - a);
-            g += src[si + 1] * a + 255 * (1 - a);
-            b += src[si + 2] * a + 255 * (1 - a);
+            r += src[si] * a + gv * (1 - a);
+            g += src[si + 1] * a + gv * (1 - a);
+            b += src[si + 2] * a + gv * (1 - a);
             n++;
           }
         }
@@ -128,7 +144,7 @@
         if (n) {
           out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n;
         } else {
-          out[o] = out[o + 1] = out[o + 2] = 255;
+          out[o] = out[o + 1] = out[o + 2] = gv;
         }
         out[o + 3] = 255;
       }
@@ -137,8 +153,9 @@
   }
 
   /* The matte is stored at its own resolution; sample it nearest-neighbour. */
-  function applyMatte(data, w, h, matte) {
+  function applyMatte(data, w, h, matte, ground) {
     var mw = matte.w, mh = matte.h, m = matte.mask;
+    var gv = ground === undefined ? 255 : ground;
     for (var y = 0; y < h; y++) {
       var my = Math.min(mh - 1, (y * mh / h) | 0);
       for (var x = 0; x < w; x++) {
@@ -146,9 +163,9 @@
         var a = m[my * mw + mx] / 255;
         if (a >= 0.999) continue;
         var i = (y * w + x) * 4;
-        data[i] = data[i] * a + 255 * (1 - a);
-        data[i + 1] = data[i + 1] * a + 255 * (1 - a);
-        data[i + 2] = data[i + 2] * a + 255 * (1 - a);
+        data[i] = data[i] * a + gv * (1 - a);
+        data[i + 1] = data[i + 1] * a + gv * (1 - a);
+        data[i + 2] = data[i + 2] * a + gv * (1 - a);
       }
     }
   }
@@ -167,8 +184,12 @@
     var px = input.pixels;
     if (!px) return input.items;
 
+    // Inverted, the light parts of the picture are the ink, and the ground
+    // everything transparent lands on has to be dark so it stays paper.
+    var inv = !!input.invert;
     var key = [input.sourceId || 'x', px.w, px.h, p.imageCut, input.autoCut, p.imageLevels,
-               input.matte ? input.matte.w + 'x' + input.matte.h : 'none'].join('|');
+               input.matte ? input.matte.w + 'x' + input.matte.h : 'none',
+               inv ? 'neg' : 'pos'].join('|');
     if (traceCache.key === key) return traceCache.items;
     var G = root.Grunge;
     if (!G || !G.traceRings) return input.items;
@@ -176,13 +197,15 @@
     var maxPx = 1400;
     var sc = Math.min(1, maxPx / Math.max(px.w, px.h));
     var w = Math.max(8, Math.round(px.w * sc)), h = Math.max(8, Math.round(px.h * sc));
-    var data = resample(px, w, h);
+    var ground = inv ? 0 : 255;
+    var data = resample(px, w, h, ground);
 
-    if (input.matte) applyMatte(data, w, h, input.matte);
+    if (input.matte) applyMatte(data, w, h, input.matte, ground);
 
     var lum = new Float32Array(w * h);
     for (var i = 0, q = 0; i < lum.length; i++, q += 4) {
-      lum[i] = (0.2126 * data[q] + 0.7152 * data[q + 1] + 0.0722 * data[q + 2]) / 255;
+      var l = (0.2126 * data[q] + 0.7152 * data[q + 1] + 0.0722 * data[q + 2]) / 255;
+      lum[i] = inv ? 1 - l : l;
     }
 
     var b = input.bbox;

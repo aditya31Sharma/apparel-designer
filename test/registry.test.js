@@ -57,9 +57,22 @@ console.log('\nparameters that had to change shape');
   ok('halftone is sized by dot pitch, not cell count',
     typeof ht.pitch === 'number' && ht.frequency === undefined,
     JSON.stringify({ pitch: ht.pitch, frequency: ht.frequency }));
-  ok('halftone carries a paper colour', typeof ht.paper === 'string', ht.paper);
-  ok('halftone carries a duotone split', typeof ht.duotoneSplit === 'number', ht.duotoneSplit);
-  ok('halftone starts in cmyk', ht.mode === 'cmyk');
+  // No paper. The artwork sits on the canvas, and the canvas is the garment.
+  ok('halftone carries no paper', ht.paper === undefined, ht.paper);
+  ok('halftone carries a duotone split', typeof ht.split === 'number', ht.split);
+  ok('halftone starts as one ink', ht.mode === 'mono', ht.mode);
+  // Five controls on the panel; the engine's eleven are derived from them.
+  ok('halftone is driven by grit and gain, not the engine knobs',
+    typeof ht.grit === 'number' && typeof ht.gain === 'number' &&
+    ht.roughness === undefined && ht.inkDensity === undefined && ht.angles === undefined);
+  var clean = E.get('halftone').engineOptions(ht, 100);
+  ok('the default dot is a clean arc', clean.fuzziness === 0 && clean.roughness === 0);
+  var eo = E.get('halftone').engineOptions(Object.assign({}, ht, { grit: 0.5 }), 100);
+  ok('grit moves every distress knob together',
+    eo.roughness > 0 && eo.fuzziness > 0 && eo.paperFibre > 0 && eo.inkTexture > 0);
+  ok('one angle turns all four screens thirty degrees apart',
+    eo.angles.k === 45 && eo.angles.c === 15 && eo.angles.m === 75 && eo.angles.y === 0,
+    JSON.stringify(eo.angles));
 
   var di = E.defaultsFor('dither');
   ok('dither starts with no texture', di.texture === 'none' && di.textureAmount === 0);

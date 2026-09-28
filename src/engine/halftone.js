@@ -90,15 +90,21 @@
    * generation is 1 - max(r,g,b), so a saturated red has no black in it at all
    * and a red logo comes out as blank paper. A one-colour print wants
    * perceptual darkness, which is what luminance gives. */
-  function toneOf(rgba, w, h) {
+  /* Inverted, ink follows lightness instead of darkness: what a light ink on a
+   * dark garment prints. Anything transparent shows the ground, and the
+   * ground takes no ink whichever way round the tone runs, so it is composited
+   * onto black in that case rather than white. */
+  function toneOf(rgba, w, h, invert) {
     var n = w * h;
     var t = new Float32Array(n);
+    var gv = invert ? 0 : 1;
     for (var i = 0, p = 0; i < n; i++, p += 4) {
       var a = rgba[p + 3] / 255;
-      var r = (rgba[p] / 255) * a + (1 - a);
-      var g = (rgba[p + 1] / 255) * a + (1 - a);
-      var b = (rgba[p + 2] / 255) * a + (1 - a);
-      t[i] = 1 - (0.2126 * r + 0.7152 * g + 0.0722 * b);
+      var r = (rgba[p] / 255) * a + gv * (1 - a);
+      var g = (rgba[p + 1] / 255) * a + gv * (1 - a);
+      var b = (rgba[p + 2] / 255) * a + gv * (1 - a);
+      var l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      t[i] = invert ? l : 1 - l;
     }
     return t;
   }
@@ -110,8 +116,8 @@
    * risograph or a two-colour screen print actually does, and it is why a
    * duotone keeps its colour in the midtones instead of turning into a mono
    * screen with a tint. */
-  function duotoneOf(rgba, w, h, split) {
-    var t = toneOf(rgba, w, h);
+  function duotoneOf(rgba, w, h, split, invert) {
+    var t = toneOf(rgba, w, h, invert);
     var n = t.length;
     var dark = new Float32Array(n), colour = new Float32Array(n);
     var s = clamp01(split === undefined ? 0.45 : split);
@@ -400,15 +406,17 @@
     var angles = options && options.angles ? options.angles : ANGLE_PRESETS.classic;
     var on = options && options.channels ? options.channels : { c: 1, m: 1, y: 1, k: 1 };
     var mode = (options && options.mode) || 'cmyk';
+    // A separation is a positive by definition; only spot inks can run negative.
+    var invert = !!(options && options.invert) && mode !== 'cmyk';
 
     // One and two colour prints work from perceptual tone, not from the CMYK
     // black plate, which has no black in a saturated colour at all.
     var planes, order;
     if (mode === 'mono') {
-      planes = { k: toneOf(rgba, w, h) };
+      planes = { k: toneOf(rgba, w, h, invert) };
       order = [{ key: 'k', label: 'Black', idx: 3 }];
     } else if (mode === 'duotone') {
-      var duo = duotoneOf(rgba, w, h, options && options.duotoneSplit);
+      var duo = duotoneOf(rgba, w, h, options && options.duotoneSplit, invert);
       planes = { k: duo.dark, m: duo.colour };
       order = [{ key: 'm', label: 'Colour', idx: 1 }, { key: 'k', label: 'Black', idx: 3 }];
     } else {

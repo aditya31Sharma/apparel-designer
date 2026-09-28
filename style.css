@@ -181,10 +181,22 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
 #panel-warp .tiles .preset.on .thumb svg,#panel-warp .tiles .preset.on .cap{color:#fff}
 #panel-warp .tiles .preset.on{background:var(--accent-dim)}
 
-/* halftone dot shapes, six across two rows */
-#panel-halftone .tiles{grid-template-columns:repeat(3,1fr)}
-#panel-halftone .sec:nth-child(2) .tiles{grid-template-columns:repeat(2,1fr)}
-#panel-halftone .tiles .thumb .glyph svg{width:22px;height:22px}
+/* halftone style tiles carry a screened gradient; the four colour one keeps
+ * its inks, so it sits on white the way the print would */
+#panel-halftone .tiles .thumb.paper{background:#f4f4f4}
+
+/* ---------- a job in flight ---------- */
+.prog{margin:2px 0 6px}
+.prog[hidden]{display:none}
+.prog-row{display:flex;align-items:center;gap:6px;min-height:22px}
+.prog .ptext{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prog .eta{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.prog.busy .ptext{color:var(--ink)}
+.prog.failed .ptext{color:#ffb4b4}
+.prog .bar{height:3px;border-radius:2px;background:var(--line2);margin:4px 0 0 26px;overflow:hidden}
+.prog .bar[hidden]{display:none}
+.prog .bar i{display:block;height:100%;width:0;background:var(--brand);border-radius:2px;
+  transition:width .12s linear}
 
 /* ---------- footer ---------- */
 .foot{flex:none;display:flex;gap:6px;padding:8px;border-top:1px solid #000;
@@ -335,6 +347,7 @@ body.mobile .seg button svg{width:17px;height:17px}
 body.mobile .tiles{gap:8px}
 body.mobile .tiles .thumb{height:54px}
 body.mobile .tiles .cap{font-size:12px;padding:6px 5px 7px}
+body.mobile .prog .ptext,body.mobile .prog .eta{font-size:12.5px}
 body.mobile #panel-warp .tiles .thumb{height:38px}
 body.mobile #panel-warp .tiles .cap{font-size:11px}
 

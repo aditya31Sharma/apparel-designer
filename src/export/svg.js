@@ -4,8 +4,11 @@
  * lives as typed arrays and Path2D objects; turning 200,000 numbers into a
  * string is only worth paying for when a file is actually being written.
  *
- * Halftone plates come out as one compound path per ink inside a multiply
- * group, so Illustrator opens four objects rather than a hundred thousand.
+ * Halftone plates come out as one compound path per ink, so Illustrator opens
+ * four objects rather than a hundred thousand. Four colour process plates sit
+ * in a multiply group, because that is how process inks overprint on white
+ * stock; spot inks are opaque and sit on top of each other as drawn, which is
+ * what they do on a garment.
  */
 (function (root) {
   'use strict';
@@ -57,7 +60,7 @@
 
   /* renders: [{ matrix, bbox, shapes:[{d,fill,stroke,strokeWidth}],
    *             plates:[{key,label,colour,dots}], pattern, fuzziness, seed,
-   *             opacity, name }]
+   *             blend, opacity, name }]
    * opts:    { separations, precision, background } */
   function build(renders, opts) {
     var o = opts || {};
@@ -72,15 +75,6 @@
         ? '' : ' opacity="' + round(R.opacity, 3) + '"';
       var open = '  <g' + (R.name ? ' id="' + esc(R.name) + '"' : '') + tf + alpha + '>';
       var parts = [];
-
-      /* The ground the ink sits on, whether that ink is a screen or an outline
-       * traced from a photograph. It travels with the artwork so the file
-       * opens looking like the canvas did. */
-      if (R.paper && R.paper !== 'none' && R.bbox) {
-        parts.push('    <rect x="' + round(R.bbox.x, prec) + '" y="' + round(R.bbox.y, prec) +
-          '" width="' + round(R.bbox.width, prec) + '" height="' + round(R.bbox.height, prec) +
-          '" fill="' + R.paper + '"/>');
-      }
 
       /* A photo nothing has been applied to yet. It leaves as the picture it
        * is, embedded, because a file that opens empty is not an export of what
@@ -114,7 +108,8 @@
             parts.push('    </g>');
           });
         } else {
-          parts.push('    <g style="mix-blend-mode:multiply">');
+          parts.push(R.blend === 'multiply'
+            ? '    <g style="mix-blend-mode:multiply">' : '    <g>');
           R.plates.forEach(function (pl) {
             parts.push('      <path d="' + platePath(pl, R.pattern, R.fuzziness, R.seed, prec) +
                        '" fill="' + pl.colour + '" data-ink="' + esc(pl.label) + '"/>');

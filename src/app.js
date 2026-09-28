@@ -103,7 +103,10 @@
                  strokeWidth: i.strokeWidth };
       }),
       bbox: layer.source.bbox,
-      autoCut: layer.source.autoCut,
+      // The threshold measured from the picture, for whichever way round the
+      // tone is running.
+      autoCut: layer.invert ? layer.source.autoCutInv : layer.source.autoCut,
+      invert: !!layer.invert,
       effects: layer.effects.map(function (e) {
         return { type: e.type, on: e.on, params: JSON.parse(JSON.stringify(e.params)) };
       }),
@@ -174,12 +177,14 @@
       };
       var t0 = performance.now();
       Effects.runStack({ effects: job.effects },
-        { items: job.items, bbox: job.bbox, matte: job.matte,
-          pixels: layer.source.pixels, sourceId: layer.id }, ctx).then(function (run) {
+        { items: job.items, bbox: job.bbox, matte: job.matte, invert: job.invert,
+          autoCut: job.autoCut, pixels: layer.source.pixels, sourceId: layer.id },
+        ctx).then(function (run) {
         acceptResult(layer, run.result, run.stats, job.generation,
           Math.round(performance.now() - t0));
+        var newest = !queued;
         finishJob();
-        if (window.__onResult) { var g = window.__onResult; window.__onResult = null; g(); }
+        if (newest && window.__onResult) { var g = window.__onResult; window.__onResult = null; g(); }
       }).catch(function (err) { fail(err.message || String(err)); finishJob(); });
     } catch (err) {
       fail(err.message || String(err));
@@ -202,11 +207,15 @@
     window.__lastStats = m.stats || null;
     window.__lastMs = m.ms;
     acceptResult(layer, m, m.stats, m.generation, m.ms);
+    // Signalled last, once the scene and the readouts are actually updated,
+    // and only when nothing newer is waiting. Firing it first meant a harness
+    // read the previous render's numbers; firing it while a change was still
+    // queued meant it read the render before the one it had asked about,
+    // which showed up as a coarse screen exporting three times the dots it
+    // could have had.
+    var newest = !queued;
     finishJob();
-    // Signalled last, once the scene and the readouts are actually updated.
-    // Firing it first meant a harness read the previous render's numbers and
-    // every measurement came out one step behind.
-    if (window.__onResult) { var f = window.__onResult; window.__onResult = null; f(); }
+    if (newest && window.__onResult) { var f = window.__onResult; window.__onResult = null; f(); }
   }
 
   /* Turn engine output into things the canvas can draw. This is the only place
@@ -235,7 +244,7 @@
     }
 
     renders[layer.id] = {
-      shapes: shapes, plates: plates, paper: out.paper,
+      shapes: shapes, plates: plates, mode: out.mode,
       pattern: out.pattern, fuzziness: out.fuzziness, seed: out.seed,
       bbox: out.bbox || layer.source.bbox
     };
@@ -248,7 +257,7 @@
       width: Math.round(layer.source.bbox.width),
       height: Math.round(layer.source.bbox.height),
       uri: imageUriFor(layer)
-    } : null);
+    } : null, out.fuzziness);
     paint();
     window.__timing.firstPaint = Math.round(performance.now() - tPaint);
   }
@@ -258,13 +267,32 @@
    * A fine screen over a large photo is half a million dots and twenty-odd
    * megabytes. That is a fair file for that much geometry, but finding out by
    * pressing Save is not fair, so the number is on screen beforehand. */
-  function estimateBytes(shapes, plates, pattern) {
+  function estimateBytes(shapes, plates, pattern, fuzziness) {
     var bytes = 260;
     if (plates) {
-      // Calibrated against real exports, rounded up: a figure that surprises
-      // you by being low is worse than one that is a little cautious.
-      var per = pattern === 'round' ? 62 : pattern === 'cross' ? 142 : 78;
-      plates.forEach(function (p) { bytes += (p.dots.length / H.STRIDE) * per; });
+      // Measured against real exports and rounded up: a figure that
+      // surprises you by being low is worse than one a little cautious.
+      plates.forEach(function (p) {
+        var d = p.dots;
+        for (var o = 0; o < d.length; o += H.STRIDE) {
+          var r = d[o + 2];
+          if (fuzziness > 0) {
+            // Any grit turns a dot into a polygon whose point count follows
+            // its radius, the same rule emitDot uses. A point is a command,
+            // two coordinates to two decimals and a space: sixteen bytes.
+            var steps = Math.max(6, Math.min(28, Math.round(r * 2.2) + 6));
+            bytes += 2 + (steps + 1) * 16;
+          } else if (pattern === 'round' || pattern === 'ellipse') {
+            // Two arcs. The radius is written four times and its double
+            // twice, so a wide screen with an eleven pixel dot costs more
+            // per dot than a fine one with a two pixel dot.
+            var rs = String(Math.round(r * 100) / 100).length;
+            bytes += (pattern === 'ellipse' ? 60 : 40) + 6 * rs;
+          } else {
+            bytes += pattern === 'cross' ? 162 : 82;
+          }
+        }
+      });
     }
     (shapes || []).forEach(function (sh) {
       bytes += sh.points ? sh.points.length * 7.5 : (sh.d ? sh.d.length : 0);
@@ -277,7 +305,7 @@
     return Math.max(1, Math.round(b / 1024)) + 'KB';
   }
 
-  function showStats(stats, ms, shapes, plates, pattern, raw) {
+  function showStats(stats, ms, shapes, plates, pattern, raw, fuzziness) {
     var bits = [];
     // A photo with nothing applied has no geometry to count, and counting the
     // one frame rectangle holding its pixels as "1 shapes" says nothing.
@@ -309,7 +337,7 @@
     if (ms !== undefined) bits.push(ms + 'ms');
     if (lastPool > 1) bits.push(lastPool + ' threads');
 
-    var est = estimateBytes(shapes, plates, pattern);
+    var est = estimateBytes(shapes, plates, pattern, fuzziness);
     var box = $('stats');
     if (box) box.textContent = bits.join('  ·  ');
     var size = $('exportSize');
@@ -347,8 +375,8 @@
             strokeWidth: paintDef.useSource ? sh.strokeWidth : paintDef.strokeWidth
           };
         }),
-        plates: r.plates,
-        paper: r.paper || null,
+        plates: inkPlates(L, r),
+        blend: plateBlend(r),
         bbox: r.bbox
       });
     });
@@ -358,6 +386,31 @@
     overlay.mode = tool === 'warp' ? 'warp' : 'transform';
     overlay.draw();
     syncHud();
+  }
+
+  /* A one or two colour screen prints in the layer's ink. The effect never
+   * sees the ink, so the plates come back marked rather than coloured and are
+   * painted here, which is what makes changing the ink a repaint instead of a
+   * screen. Four colour process plates keep their own inks. */
+  function inkPlates(L, r) {
+    if (!r.plates) return null;
+    if (r.mode === 'cmyk') return r.plates;
+    var two = r.mode === 'duotone';
+    var p = Doc.effect(L, 'halftone').params;
+    return r.plates.map(function (pl) {
+      var second = two && pl.key === 'm';
+      return {
+        key: pl.key, dots: pl.dots, paths: pl.paths,
+        colour: second ? (p.ink2 || pl.colour) : L.paint.fill,
+        label: two ? (second ? 'Ink 2' : 'Ink 1') : 'Ink'
+      };
+    });
+  }
+
+  /* Process inks are translucent and overprint; spot inks are opaque and sit
+   * on top of each other, which is what they do on a garment. */
+  function plateBlend(r) {
+    return r.plates && r.mode === 'cmyk' ? 'multiply' : 'source-over';
   }
 
   /* The imported picture with the cut-out applied, for the case where nothing
@@ -431,15 +484,21 @@
   function apiFor(scope) {
     return {
       get: function (id) {
+        // The canvas belongs to the view, not to any layer, so it is there
+        // with nothing loaded.
+        if (id === 'canvas') return viewport ? viewport.bg : '#1e1e1e';
+        if (id === 'bgProgress') return bgJob;
         var L = Doc.selected(doc);
         if (!L) return undefined;
         // `__on` is the effect's own switch, which lives on the stack entry
         // rather than among its parameters.
         if (id === '__on') return scope === 'layer' ? true : Doc.effect(L, scope).on;
         if (id === 'lockRatio') return !!L.lockRatio;
+        if (id === 'hasMatte') return bgJob.busy ? 'busy' : !!L.matte;
         return readPath(scope === 'layer' ? L : Doc.effect(L, scope).params, id);
       },
       set: function (id, v, live) {
+        if (id === 'canvas') { setCanvas(v); return; }
         var L = Doc.selected(doc);
         if (!L) return;
         if (!live) history.push(doc);
@@ -450,8 +509,18 @@
           return;
         }
         if (id === 'lockRatio') { L.lockRatio = v; overlay.lockRatio = v; return; }
+        if (id === 'invert') { setInvert(L, v); return; }
         writePath(scope === 'layer' ? L : Doc.effect(L, scope).params, id, v);
-        if (scope !== 'layer') onParamChanged(scope, id, v);
+        if (scope !== 'layer') { onParamChanged(scope, id, v); markDirty(live); return; }
+        if (id.indexOf('paint.') === 0) {
+          // The ink is the ink: touching it means use it.
+          if (id === 'paint.fill') L.paint.useSourceColours = false;
+          // Paint never reaches an effect, so nothing has to be computed
+          // again. A colour change on a six hundred millisecond dither is a
+          // repaint, not a wait.
+          paint();
+          return;
+        }
         markDirty(live);
       },
       commit: function () { syncPanels(); },
@@ -475,9 +544,6 @@
     var L = Doc.selected(doc);
     var p = Doc.effect(L, scope).params;
     if (scope === 'halftone') {
-      if (id === 'anglePreset' && H.ANGLE_PRESETS[v]) {
-        p.angles = Object.assign({}, H.ANGLE_PRESETS[v]);
-      }
       if (id === 'preset' && HALFTONE_PRESETS[v]) {
         Object.assign(p, JSON.parse(JSON.stringify(HALFTONE_PRESETS[v].params)));
       }
@@ -490,7 +556,7 @@
          * style. So a style's threshold is applied as the offset it is from
          * the 40% baseline, and a style stays a choice about the look rather
          * than something that throws away a level measured from the artwork. */
-        var auto = L.source.autoCut;
+        var auto = L.invert ? L.source.autoCutInv : L.source.autoCut;
         if (auto !== undefined && next.imageCut !== undefined) {
           next.imageCut = Math.max(0.1, Math.min(0.85, auto + (next.imageCut - 0.4)));
         }
@@ -506,12 +572,33 @@
     var L = Doc.selected(doc);
     if (!L) return false;
     var p = scope === 'layer' ? L : Doc.effect(L, scope).params;
-    if (cond === 'duotone') return p.mode === 'duotone' || p.mode === 'mono';
+    if (cond === 'duotone') return p.mode === 'duotone';
     if (cond === 'cmyk') return p.mode === 'cmyk';
-    if (cond === 'texture') return p.texture && p.texture !== 'none';
+    if (cond === 'texture') return !!p.texture && p.texture !== 'none';
+    if (cond === 'notexture') return !p.texture || p.texture === 'none';
     // The tone controls only mean anything when there is a photo to threshold.
     if (cond === 'photo') return !!L.source.pixels;
+    if (cond === 'vector') return !L.source.pixels;
     return true;
+  }
+
+  /* The canvas colour is the garment. It lives in the view, is remembered
+   * between launches, and never goes into the file. */
+  function setCanvas(v) {
+    if (!/^#[0-9a-f]{6}$/i.test(v || '')) return;
+    viewport.bg = v;
+    viewport.invalidate();
+    try { localStorage.setItem('ad.canvas', v); } catch (e) { /* private window */ }
+  }
+
+  /* Which way round a photo's tone runs. The dither's threshold was measured
+   * from the picture for one polarity, so flipping it swaps in the threshold
+   * measured for the other. */
+  function setInvert(L, v) {
+    L.invert = !!v;
+    var cut = L.invert ? L.source.autoCutInv : L.source.autoCut;
+    if (cut !== undefined) Doc.effect(L, 'dither').params.imageCut = cut;
+    markDirty(false);
   }
 
   function syncPanels() {
@@ -540,16 +627,19 @@
    */
   var INK_TARGET = 0.33;
 
-  function autoCut(px) {
+  function autoCut(px, invert) {
     if (!px || !px.data) return 0.4;
     var d = px.data, hist = new Uint32Array(256), n = 0;
+    // Composited onto the ground the tracer will use, and inverted the way
+    // the tracer will invert, so the histogram is of what gets thresholded.
+    var gv = invert ? 0 : 255;
     for (var i = 0; i < d.length; i += 4) {
-      // Composited onto white, the way the tracer sees it.
       var a = d[i + 3] / 255;
-      var r = d[i] * a + 255 * (1 - a);
-      var g = d[i + 1] * a + 255 * (1 - a);
-      var b = d[i + 2] * a + 255 * (1 - a);
-      hist[(0.2126 * r + 0.7152 * g + 0.0722 * b) | 0]++;
+      var r = d[i] * a + gv * (1 - a);
+      var g = d[i + 1] * a + gv * (1 - a);
+      var b = d[i + 2] * a + gv * (1 - a);
+      var l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      hist[(invert ? 255 - l : l) | 0]++;
       n++;
     }
     if (!n) return 0.4;
@@ -577,6 +667,12 @@
     // Nothing is applied on import. The artwork looks exactly as it arrived.
     layer.effects.forEach(function (e) { e.on = false; });
     layer.paint.useSourceColours = true;
+    // A file painted in one colour is a one colour artwork, and the Ink swatch
+    // should say so rather than showing white over a black logo. Anything with
+    // more colours keeps them until the ink is touched.
+    var one = pixels ? null : soleColour(items);
+    if (one) { layer.paint.fill = one; layer.paint.useSourceColours = false; }
+    if (!bgJob.busy) { bgJob = { text: '', busy: false }; }
 
     doc.layers = [layer];
     doc.selection = layer.id;
@@ -594,6 +690,33 @@
     syncPanels();
     compute();
     setTimeout(function () { viewport.fit(bbox); }, 0);
+  }
+
+  var probe = null;
+  function normHex(v) {
+    if (!v || v === 'none' || /^url\(/i.test(v)) return null;
+    if (!probe) probe = document.createElement('canvas').getContext('2d');
+    // An unparseable colour leaves the previous one in place, so start from a
+    // sentinel that no real artwork would resolve to and reject it.
+    probe.fillStyle = '#010203';
+    probe.fillStyle = v;
+    var out = String(probe.fillStyle);
+    return /^#[0-9a-f]{6}$/i.test(out) && out !== '#010203' ? out.toLowerCase() : null;
+  }
+
+  function soleColour(items) {
+    var seen = {}, n = 0;
+    for (var i = 0; i < items.length; i++) {
+      var cs = [items[i].fill];
+      if (items[i].stroke && items[i].strokeWidth > 0) cs.push(items[i].stroke);
+      for (var j = 0; j < cs.length; j++) {
+        if (!cs[j] || cs[j] === 'none') continue;
+        var h = normHex(cs[j]);
+        if (!h) return null;
+        if (!seen[h]) { seen[h] = true; n++; }
+      }
+    }
+    return n === 1 ? Object.keys(seen)[0] : null;
   }
 
   function loadMarkup(markup, name) {
@@ -641,19 +764,19 @@
         // imported and the first thing the tool does to your artwork can be
         // the thing you asked for.
         //
-        // A traced photo has no colours of its own worth keeping, so the Fill
-        // control drives one. Halftone ignores this and uses its plates.
+        // A traced photo has no colours of its own worth keeping, so the Ink
+        // control drives one, and a one or two colour halftone prints in it.
         L.paint.useSourceColours = false;
-        // Ink is dark and paper is white. Leaving the fill at white meant a
-        // traced photo drew as a white shape on a dark canvas, which is where
-        // "it turns into one white blob" came from: it was not the trace going
-        // wrong, it was the trace being shown inside out.
-        L.paint.fill = '#141414';
+        // White ink on the dark canvas, which is a print on a dark garment.
+        // Both are one swatch away. There is no paper: the artwork sits on
+        // the canvas, and the canvas is whatever you make it.
+        L.paint.fill = '#ffffff';
 
-        // Read once, from this picture, and used by everything that traces it.
-        var cut = autoCut(L.source.pixels);
-        L.source.autoCut = cut;
-        Doc.effect(L, 'dither').params.imageCut = cut;
+        // Read once, from this picture, for both ways round the tone can run,
+        // and used by everything that traces it.
+        L.source.autoCut = autoCut(L.source.pixels, false);
+        L.source.autoCutInv = autoCut(L.source.pixels, true);
+        Doc.effect(L, 'dither').params.imageCut = L.source.autoCut;
 
         tool = 'halftone';
         syncPanels();
@@ -731,8 +854,8 @@
             strokeWidth: pd.useSource ? sh.strokeWidth : pd.strokeWidth
           };
         }),
-        plates: r.plates,
-        paper: r.paper || null,
+        plates: inkPlates(L, r),
+        blend: plateBlend(r),
         pattern: r.pattern, fuzziness: r.fuzziness, seed: r.seed
       };
     }).filter(Boolean);
@@ -784,6 +907,10 @@
     });
     overlay.view = viewport.view;
     overlay.gridStep = 1;
+    try {
+      var kept = localStorage.getItem('ad.canvas');
+      if (/^#[0-9a-f]{6}$/i.test(kept || '')) viewport.bg = kept;
+    } catch (e) { /* no storage, the default canvas */ }
 
     buildPanels();
     startWorker();
@@ -848,10 +975,10 @@
     var bgi = 0;
     $('bgBtn').onclick = function () {
       bgi = (bgi + 1) % BGS.length;
-      viewport.bg = BGS[bgi].c;
+      setCanvas(BGS[bgi].c);
       this.classList.toggle('on', bgi !== 0);
-      this.dataset.tip = 'Canvas|' + BGS[bgi].id;
-      viewport.invalidate();
+      this.dataset.tip = 'Canvas|' + BGS[bgi].id + '. Any colour: the Canvas swatch in the panel';
+      syncPanels();
     };
 
     $('undo').onclick = function () { if (history.undo(doc)) { syncPanels(); markDirty(false); } };
@@ -1047,33 +1174,119 @@
     ['warp', 'dither', 'halftone'].forEach(function (t) {
       on('tool:' + t, function () { $('tool-' + t).click(); });
     });
-    if (D.onBackgroundProgress) {
-      D.onBackgroundProgress(function (stage) { $('bgState').textContent = stage; });
-    }
+    if (D.onBackgroundProgress) D.onBackgroundProgress(bgStage);
   }
 
   /* ---------- background removal ---------- */
 
+  /* What the panel shows while the cut is running: the stage, a bar, and how
+   * long is left. The model gives no progress of its own, so the bar runs on
+   * the clock against how long it took last time on this machine, and the
+   * first time against a guess. Nobody can tell a seven second job from a
+   * hung one without it. */
+  var bgJob = { text: '', busy: false };
+  var bgTimer = null;
+  var BG_GUESS_MS = 9000;
+
+  function bgEstimate() {
+    try {
+      var v = parseInt(localStorage.getItem('ad.bgMs'), 10);
+      if (v > 500 && v < 600000) return v;
+    } catch (e) { /* no storage */ }
+    return BG_GUESS_MS;
+  }
+
+  function bgRemember(ms) {
+    try { localStorage.setItem('ad.bgMs', String(ms)); } catch (e) { /* no storage */ }
+  }
+
+  /* Straight to the two rows rather than through a full panel sync, since
+   * this runs several times a second while the cut is out. */
+  function showBg() {
+    var rows = panels.layer && panels.layer.rows;
+    if (!rows) return;
+    if (rows.bgProgress) rows.bgProgress.show(bgJob);
+    var L = Doc.selected(doc);
+    if (rows.hasMatte) rows.hasMatte.show(bgJob.busy ? 'busy' : !!(L && L.matte));
+  }
+
+  /* A stage reported by the main process: the model download says how far
+   * it has got, the model run only says what it is doing. */
+  function bgStage(stage) {
+    if (!bgJob.busy) return;
+    var m = /(\d+)% of (\d+)MB/.exec(stage || '');
+    if (m) {
+      bgJob.download = true;
+      bgJob.pct = (+m[1]) / 100;
+      bgJob.text = 'Fetching the background model, one time only';
+      bgJob.eta = m[1] + '% of ' + m[2] + 'MB';
+    } else {
+      // The clock starts on the run itself, not on a download before it.
+      if (bgJob.download) bgJob.t0 = performance.now();
+      bgJob.download = false;
+      bgJob.text = stage || 'Removing background';
+    }
+    showBg();
+  }
+
+  function bgTick() {
+    if (!bgJob.busy || bgJob.download) return;
+    var elapsed = performance.now() - bgJob.t0;
+    var est = bgJob.estimate;
+    bgJob.pct = Math.min(0.96, elapsed / est);
+    bgJob.eta = elapsed >= est ? 'nearly there'
+      : 'about ' + Math.max(1, Math.ceil((est - elapsed) / 1000)) + 's left';
+    showBg();
+  }
+
   function runBackgroundRemoval() {
     var L = Doc.selected(doc);
-    if (!L || !L.source.bitmap) return;
-    var btn = $('removeBg');
-    btn.classList.add('busy');
+    if (!L || !L.source.bitmap || bgJob.busy) return;
+    var est = bgEstimate();
+    bgJob = { text: 'Removing background', busy: true, pct: 0,
+              eta: 'about ' + Math.ceil(est / 1000) + 's', t0: performance.now(),
+              estimate: est, download: false };
+    clearInterval(bgTimer);
+    bgTimer = setInterval(bgTick, 120);
+    showBg();
+    var tAll = performance.now();
 
     cutOut(L.source.bitmap).then(function (matte) {
-      btn.classList.remove('busy');
-      if (!matte) return;
+      clearInterval(bgTimer);
+      var total = ((performance.now() - tAll) / 1000).toFixed(1) + 's';
+      if (!matte) { bgJob = { text: '', busy: false }; showBg(); return; }
       history.push(doc);
       L.matte = matte;
-      if (matte.source === 'model') $('bgState').textContent = 'Background removed';
-      else if (!/used the simple cut/.test($('bgState').textContent)) {
-        $('bgState').textContent = 'Background removed with the simple cut';
+      if (matte.source === 'model') {
+        bgRemember(Math.round(performance.now() - bgJob.t0));
+        bgJob = { text: 'Background removed in ' + total, busy: false, pct: 1 };
+      } else {
+        bgJob = { text: bgJob.fallback || 'Background removed with the simple cut',
+                  busy: false, pct: 1, failed: !!bgJob.fallback };
       }
+      showBg();
       markDirty(false);
     }).catch(function (err) {
-      btn.classList.remove('busy');
-      fail('Background removal failed: ' + (err.message || err));
+      clearInterval(bgTimer);
+      bgJob = { text: 'Background removal failed: ' + (err.message || err),
+                busy: false, failed: true };
+      showBg();
     });
+  }
+
+  function restoreBackground(L) {
+    history.push(doc);
+    L.matte = null;
+    bgJob = { text: '', busy: false };
+    showBg();
+    markDirty(false);
+  }
+
+  /* One button: remove the background, or put it back once it is gone. */
+  function toggleBackground() {
+    var L = Doc.selected(doc);
+    if (!L || !L.source.bitmap || bgJob.busy) return;
+    if (L.matte) restoreBackground(L); else runBackgroundRemoval();
   }
 
   /* The desktop build runs BiRefNet locally through onnxruntime-node. Without
@@ -1085,7 +1298,6 @@
       var g = c.getContext('2d');
       g.drawImage(bitmap, 0, 0);
       var img = g.getImageData(0, 0, c.width, c.height);
-      $('bgState').textContent = 'Removing background...';
       return window.desktop.removeBackground({
         data: img.data.buffer, width: c.width, height: c.height
       }).then(function (res) {
@@ -1095,11 +1307,10 @@
         // No model, no Node to run it in, or the download failed. Say what
         // happened and cut it the simple way rather than doing nothing.
         var why = (res && res.error) || 'the model was unavailable';
-        $('bgState').textContent = 'Model unavailable (' + why + '), used the simple cut';
+        bgJob.fallback = 'Model unavailable (' + why + '), used the simple cut';
         return luminanceMatte(bitmap);
       }).catch(function (err) {
-        $('bgState').textContent = 'Model failed (' + (err.message || err) +
-          '), used the simple cut';
+        bgJob.fallback = 'Model failed (' + (err.message || err) + '), used the simple cut';
         return luminanceMatte(bitmap);
       });
     }
@@ -1141,6 +1352,8 @@
 
   function buildPanels() {
     panels.layer = window.Controls.build($('panel-layer'), window.SPECS.layer(), apiFor('layer'));
+    // The rest of the layer's controls, below whichever effect is showing.
+    panels.more = window.Controls.build($('panel-more'), window.SPECS.more(), apiFor('layer'));
     Effects.list().forEach(function (def) {
       var host = $('panel-' + def.id);
       if (!host || !window.SPECS[def.id]) return;
@@ -1157,6 +1370,9 @@
     loadMarkup: loadMarkup,
     setTexture: function (img, name) { textureImage = img; textureName = name; },
     textureName: function () { return textureName; },
+    toggleBackground: toggleBackground,
+    bgState: function () { return bgJob; },
+    setCanvas: setCanvas,
     history: history,
     syncPanels: syncPanels,
     selected: function () { return Doc.selected(doc); },

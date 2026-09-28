@@ -19,6 +19,8 @@ const SCRIPT = `(async function(){
   function beat(where){
     window.__suiteProgress = {
       at: where, done: results.length, failed: failures.length, t: Date.now(),
+      // The names too, so a run that dies after a failure still says which.
+      failures: failures.slice(-12),
       err: (document.getElementById('err').textContent || '').slice(0, 120),
       state: window.App.debug ? window.App.debug() : null
     };
@@ -99,7 +101,14 @@ const SCRIPT = `(async function(){
    * earlier reads the frame before. */
   function frame(){
     return new Promise(function(r){
-      requestAnimationFrame(function(){ requestAnimationFrame(r); });
+      var done = false;
+      function fin(){ if (done) return; done = true; r(); }
+      requestAnimationFrame(function(){ requestAnimationFrame(fin); });
+      // A window nothing can see paints nothing, and its animation frames
+      // never come. Fall through rather than wait forever: the pixel read
+      // that follows will say what it saw, and the run reports instead of
+      // hanging.
+      setTimeout(fin, 600);
     });
   }
 
@@ -133,6 +142,10 @@ const SCRIPT = `(async function(){
     check(label + ' export has a path', /<path /.test(svg));
     return svg.length;
   }
+
+  // The canvas colour is remembered between launches, and every pixel read
+  // below assumes the dark default.
+  window.App.setCanvas('#1e1e1e');
 
   // ================= vector artwork =================
   var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200">' +
@@ -173,14 +186,36 @@ const SCRIPT = `(async function(){
   });
   check('every dither style sets the photo threshold', dmissing.length === 0, dmissing.join(',') || 'all set');
 
-  /* A short recommended group at the top of each panel, and nothing appearing
-   * in both it and the full list below. */
-  ['DITHER_PRESETS', 'HALFTONE_PRESETS'].forEach(function (table) {
-    var t = window[table];
-    var starred = Object.keys(t).filter(function (k) { return t[k].star; });
-    check(table + ' has a recommended group', starred.length >= 2 && starred.length <= 4,
-      starred.join(',') || 'none');
-  });
+  /* Few styles, each a different thing. Fifteen that differed by a slider
+   * were fifteen ways of not being able to tell, so the list is short and no
+   * two entries share a texture or a screen kind. */
+  check('dither offers a handful of styles', dnames0().length >= 4 && dnames0().length <= 7,
+    dnames0().length + ' styles');
+  check('every dither style is a different texture', (function(){
+    var seen = {};
+    return dnames0().every(function (k) {
+      var t = window.DITHER_PRESETS[k].params.texture;
+      if (seen[t]) return false; seen[t] = true; return true;
+    });
+  })(), dnames0().map(function (k) { return window.DITHER_PRESETS[k].params.texture; }).join(','));
+  var hn0 = Object.keys(window.HALFTONE_PRESETS);
+  check('halftone offers a handful of screens', hn0.length >= 3 && hn0.length <= 6, hn0.length + ' screens');
+  check('every halftone screen differs in kind, not just size', (function(){
+    var seen = {};
+    return hn0.every(function (k) {
+      var p = window.HALFTONE_PRESETS[k].params;
+      var kind = p.mode + '/' + p.pattern + '/' + (p.grit >= 0.8 ? 'dirty' : 'clean');
+      if (seen[kind]) return false; seen[kind] = true; return true;
+    });
+  })());
+  /* A style is the five sliders on the panel plus the two choices, and nothing
+   * hidden: what a style sets, you can see and move. */
+  check('halftone styles only set what the panel shows', hn0.every(function (k) {
+    return Object.keys(window.HALFTONE_PRESETS[k].params).every(function (key) {
+      return ['mode','pattern','pitch','gain','grit','minDot','angle','ink2','split'].indexOf(key) >= 0;
+    });
+  }));
+  function dnames0(){ return Object.keys(window.DITHER_PRESETS); }
   check('one colour is offered for both effects',
     !!window.DITHER_PRESETS.stencil && window.HALFTONE_PRESETS.onecolour &&
     window.HALFTONE_PRESETS.onecolour.params.mode === 'mono',
@@ -391,9 +426,10 @@ const SCRIPT = `(async function(){
       'wanted ' + want + ' got ' + pitchOf());
   }
 
-  /* A fully transparent area is paper and must take no ink. Resampling used to
-   * leave black gaps wherever the working bitmap was larger than the photo,
-   * which screened the empty space at about fifty per cent. */
+  /* A fully transparent area is the ground and must take no ink, so the canvas
+   * shows through it. Resampling used to leave black gaps wherever the working
+   * bitmap was larger than the photo, which screened the empty space at about
+   * fifty per cent. */
   var A = await loadFile('alpha.png','image/png');
   offAll(A);
   Doc.effect(A,'halftone').on = true;
@@ -415,8 +451,9 @@ const SCRIPT = `(async function(){
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     var px = g.getImageData(Math.round(s.x * dpr), Math.round(s.y * dpr), 1, 1).data;
     window.__cornerPx = [px[0], px[1], px[2]];
-    return px[0] > 225 && px[1] > 225 && px[2] > 225;
-  })(), JSON.stringify(window.__cornerPx));
+    // The canvas, not paper: nothing is put under the artwork any more.
+    return Math.abs(px[0] - 30) < 10 && Math.abs(px[1] - 30) < 10 && Math.abs(px[2] - 30) < 10;
+  })(), JSON.stringify(window.__cornerPx) + ' against a 30,30,30 canvas');
 
   window.App.doc().layers = [P];
   window.App.doc().selection = P.id;
@@ -473,6 +510,106 @@ const SCRIPT = `(async function(){
   P.matte = null;
   await withDeadline(recompute(), 30000, 'clear matte');
 
+  /* ---- one ink, one canvas, no paper ----
+   *
+   * The layer's ink is the colour of everything: a traced photo, a bent
+   * logo, and a one or two colour screen. It is applied when the plates are
+   * painted, so changing it never runs the screen again. And nothing puts
+   * paper under the artwork any more: what is on the canvas is the file. */
+  beat('ink and canvas');
+  offAll(P);
+  P.paint.fill = '#ff0000';
+  Doc.effect(P,'halftone').on = true;
+  Object.assign(Doc.effect(P,'halftone').params, JSON.parse(JSON.stringify(window.HALFTONE_PRESETS.onecolour.params)));
+  Doc.effect(P,'halftone').params.pitch = 14;
+  await withDeadline(recompute(), 30000, 'ink halftone');
+  var inkSvg = window.App.svgText(false);
+  check('a one colour halftone prints in the layer ink', /<path [^>]*fill="#ff0000"/.test(inkSvg));
+  check('no paper under a halftone', !/<rect /.test(inkSvg));
+  check('spot inks are not blended', !/mix-blend-mode/.test(inkSvg));
+  check('the ink plate is named as ink, not as black', /data-ink="Ink"/.test(inkSvg));
+  P.paint.fill = '#00ff00';
+  var gen0 = window.App.debug().generation;
+  var inkSvg2 = window.App.svgText(false);
+  check('changing the ink recolours without a recompute',
+    /fill="#00ff00"/.test(inkSvg2) && !/#ff0000/.test(inkSvg2) && window.App.debug().generation === gen0);
+
+  Doc.effect(P,'halftone').params.mode = 'duotone';
+  Doc.effect(P,'halftone').params.ink2 = '#1234ab';
+  await withDeadline(recompute(), 30000, 'two ink halftone');
+  var duoSvg = window.App.svgText(false);
+  check('two inks: the layer ink and the second', /fill="#00ff00"/.test(duoSvg) && /fill="#1234ab"/.test(duoSvg));
+  check('two inks are named as inks', /data-ink="Ink 1"/.test(duoSvg) && /data-ink="Ink 2"/.test(duoSvg));
+
+  Doc.effect(P,'halftone').params.mode = 'cmyk';
+  await withDeadline(recompute(), 30000, 'four ink halftone');
+  var cmykSvg = window.App.svgText(false);
+  check('four colour keeps its process inks and multiplies',
+    /fill="#00AEEF"/.test(cmykSvg) && /mix-blend-mode:multiply/.test(cmykSvg) && !/<rect /.test(cmykSvg));
+
+  // A traced photo prints in the ink too, with nothing under it.
+  offAll(P);
+  P.paint.fill = '#ffffff';
+  Doc.effect(P,'dither').on = true;
+  Object.assign(Doc.effect(P,'dither').params, JSON.parse(JSON.stringify(window.DITHER_PRESETS.stencil.params)));
+  Doc.effect(P,'dither').params.imageCut = P.source.autoCut;
+  await withDeadline(recompute(), 30000, 'ink dither');
+  var ditSvg = window.App.svgText(false);
+  check('a traced photo prints in the layer ink with no paper',
+    /<path [^>]*fill="#ffffff"/.test(ditSvg) && !/<rect /.test(ditSvg));
+  document.getElementById('fit').click();
+  await wait(400); window.App.viewport().invalidate(); await frame();
+  // The picture is dark line art on white; its top-left corner is white
+  // paper, which traces to nothing, so the canvas shows through it.
+  var corner2 = samplePhoto(0.03, 0.03);
+  check('where the photo was paper, the canvas shows through',
+    Math.abs(corner2[0] - 30) < 12 && Math.abs(corner2[1] - 30) < 12,
+    [corner2[0], corner2[1], corner2[2]].join(',') + ' against 30,30,30');
+
+  // The canvas is any colour, and the grid follows it.
+  window.App.setCanvas('#f2f2f2');
+  await wait(300); window.App.viewport().invalidate(); await frame();
+  var corner3 = samplePhoto(0.03, 0.03);
+  check('the canvas takes any colour', corner3[0] > 225 && corner3[1] > 225 && corner3[2] > 225,
+    [corner3[0], corner3[1], corner3[2]].join(','));
+  window.App.setCanvas('#1e1e1e');
+  await wait(300); window.App.viewport().invalidate(); await frame();
+
+  /* ---- invert: a light ink on a dark garment prints the light parts ---- */
+  var posSvg = ditSvg;
+  check('both thresholds were measured from the picture',
+    typeof P.source.autoCut === 'number' && typeof P.source.autoCutInv === 'number',
+    P.source.autoCut + ' / ' + P.source.autoCutInv);
+  P.invert = true;
+  Doc.effect(P,'dither').params.imageCut = P.source.autoCutInv;
+  await withDeadline(recompute(), 30000, 'inverted dither');
+  var negSvg = window.App.svgText(false);
+  check('inverted dither traces something', /<path /.test(negSvg));
+  check('inverted dither is a different picture', negSvg.length !== posSvg.length || negSvg !== posSvg);
+  await wait(300); window.App.viewport().invalidate(); await frame();
+  // Probe a spot that is pure white in the picture itself, found by looking
+  // rather than assumed: the corner of a scanned drawing is often a grey
+  // vignette, which is light enough to trace as nothing and not light enough
+  // to trace as ink once the tone is turned round.
+  var white = (function(){
+    var px = P.source.pixels, step = Math.max(4, (px.w / 40) | 0);
+    for (var y = (px.h * 0.1) | 0; y < px.h * 0.9; y += step){
+      for (var x = (px.w * 0.1) | 0; x < px.w * 0.9; x += step){
+        var i = (y * px.w + x) * 4;
+        if (px.data[i] > 250 && px.data[i + 1] > 250 && px.data[i + 2] > 250) return { fx: x / px.w, fy: y / px.h };
+      }
+    }
+    return null;
+  })();
+  var corner4 = white ? samplePhoto(white.fx, white.fy) : [0, 0, 0];
+  check('inverted, the paper of the photo becomes ink',
+    !!white && corner4[0] > 200 && corner4[1] > 200 && corner4[2] > 200,
+    (white ? [corner4[0], corner4[1], corner4[2]].join(',') + ' at ' + white.fx.toFixed(2) + ',' + white.fy.toFixed(2) : 'no white found'));
+  P.invert = false;
+  Doc.effect(P,'dither').params.imageCut = P.source.autoCut;
+  offAll(P);
+  await withDeadline(recompute(), 30000, 'invert off');
+
   // ---- background removal ----
   clearErr();
   var st = await window.desktop.backgroundStatus();
@@ -482,8 +619,26 @@ const SCRIPT = `(async function(){
     offAll(P);
     var tBg = performance.now();
     document.getElementById('removeBg').click();
+    /* While it runs the panel has to say so, with a bar and a time, because a
+     * seven second wait with nothing moving reads as a hang. */
+    await wait(700);
+    var mid = JSON.parse(JSON.stringify(window.App.bgState()));
+    check('background removal shows it is running', mid.busy === true && /background|model|subject/i.test(mid.text), JSON.stringify(mid));
+    check('background removal says how long is left', /left|nearly|%/.test(mid.eta || ''), mid.eta);
+    check('background removal moves a bar', mid.pct > 0 && mid.pct < 1, mid.pct);
+    check('the button is disabled while it runs', (function(){
+      var b = document.querySelector('[data-tip^="Remove background"] button, .pr button:disabled');
+      return !!document.querySelector('#panel-layer .pr button:disabled');
+    })());
     for (i = 0; i < 180; i++){ await wait(500); if (P.matte) break; }
     var bgMs = Math.round(performance.now() - tBg);
+    var after = window.App.bgState();
+    check('background removal reports how long it took', !after.busy && /removed in [0-9.]+s/.test(after.text), after.text);
+    check('the next estimate comes from this run', (function(){
+      try { return parseInt(localStorage.getItem('ad.bgMs'), 10) > 500; } catch (e) { return false; }
+    })());
+    check('the button now offers to put the background back',
+      /Restore background/.test(document.getElementById('panel-layer').textContent));
     if (check('background removal produces a matte', !!P.matte, bgMs + 'ms')) {
       var mm = P.matte, lit = 0;
       for (i = 0; i < mm.mask.length; i++) if (mm.mask[i] > 128) lit++;
@@ -502,7 +657,8 @@ const SCRIPT = `(async function(){
       await recompute();
       check('halftone still runs with a matte', /dots/.test(document.getElementById('stats').textContent),
         document.getElementById('stats').textContent);
-      P.matte = null;
+      window.App.toggleBackground();
+      check('the same button puts the background back', !P.matte);
       await recompute();
     }
   } else {
@@ -513,6 +669,9 @@ const SCRIPT = `(async function(){
    * the importer and the exporter are the two halves most likely to drift. */
   offAll(P);
   Doc.effect(P,'halftone').on = true;
+  // From the defaults, since the checks above left the screen in four colour
+  // with grit on it, and the sizes below are calibrated for clean arcs.
+  Object.assign(Doc.effect(P,'halftone').params, window.Effects.defaultsFor('halftone'));
   // Coarse on purpose: re-importing expands every arc into a polyline, so a
   // fine screen turns a 1MB export into tens of megabytes of points. The
   // round trip is what is being checked here, not the throughput.
@@ -539,6 +698,20 @@ const SCRIPT = `(async function(){
     beforeSvg.length < beforeDots * 140,
     Math.round(beforeSvg.length/1024) + 'KB for ' + beforeDots + ' dots');
 
+  /* Grit turns every dot into a polygon and the file three or four times
+   * over. The size shown has to know that, and still never be low. */
+  Doc.effect(P,'halftone').params.grit = 0.5;
+  await recompute();
+  (function(){
+    var real = window.App.svgText(false).length;
+    var shown = document.getElementById('exportSize').textContent.replace('~','');
+    var est = /MB/.test(shown) ? parseFloat(shown) * 1048576 : parseFloat(shown) * 1024;
+    check('the size shown knows about grit', est >= real * 0.98 && est < real * 1.6,
+      shown + ' shown for ' + Math.round(real / 1024) + 'KB');
+  })();
+  Doc.effect(P,'halftone').params.grit = 0;
+  await recompute();
+
   window.App.loadMarkup(beforeSvg, 'roundtrip.svg');
   await wait(1200);
   var R = window.App.selected();
@@ -559,7 +732,7 @@ const SCRIPT = `(async function(){
   offAll(P);
   Doc.effect(P,'dither').on = true;
   Object.assign(Doc.effect(P,'dither').params,
-    JSON.parse(JSON.stringify(window.DITHER_PRESETS.charcoal.params)));
+    JSON.parse(JSON.stringify(window.DITHER_PRESETS.distressed.params)));
   await recompute();
   var dSvg = window.App.svgText(false);
   window.App.loadMarkup(dSvg, 'roundtrip2.svg');
@@ -596,20 +769,21 @@ const SCRIPT = `(async function(){
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     var vp = window.App.viewport();
     var m = window.Doc.layerMatrix(P), b = P.source.bbox;
-    var light = 0, seen = 0;
-    // A grid well inside the artwork. Filled solid, none of these is paper.
+    var holes = 0, seen = 0;
+    // A grid well inside the artwork. Filled solid, none of these would show
+    // the canvas; a hole is wherever the canvas shows through the ink.
     for (var gy = 3; gy < 18; gy++){
       for (var gx = 3; gx < 18; gx++){
         var w = window.Doc.applyMatrix(m, b.x + b.width * gx / 20, b.y + b.height * gy / 20);
         var s2 = vp.toScreen(w);
         var px = g.getImageData(Math.round(s2.x * dpr), Math.round(s2.y * dpr), 1, 1).data;
         seen++;
-        if (px[0] > 170 && px[1] > 170 && px[2] > 170) light++;
+        if (Math.abs(px[0] - 30) < 14 && Math.abs(px[1] - 30) < 14 && Math.abs(px[2] - 30) < 14) holes++;
       }
     }
-    window.__holePct = seen ? Math.round(light / seen * 100) : 0;
+    window.__holePct = seen ? Math.round(holes / seen * 100) : 0;
     return window.__holePct > 12;
-  })(), window.__holePct + '% of the artwork is paper');
+  })(), window.__holePct + '% of the artwork shows the canvas');
 
   /* ---- the preview is the result ----
    *
@@ -783,6 +957,13 @@ const SCRIPT = `(async function(){
 async function run(win, app, outDir) {
   await new Promise((r) => win.webContents.once('did-finish-load', r));
   await new Promise((r) => setTimeout(r, 900));
+  // Half the checks read pixels off the canvas, and the canvas is painted in
+  // animation frames, which stop the moment another window covers this one.
+  // A run that stalled for ten minutes turned out to be sitting behind the
+  // installed copy of the app.
+  win.setAlwaysOnTop(true);
+  win.show();
+  win.focus();
 
   // If the page never comes back, say where it got to rather than leaving a
   // window open with nothing written.

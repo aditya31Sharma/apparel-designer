@@ -245,6 +245,7 @@ self.onmessage = function (e) {
       matte: msg.matte || null,
       pixels: sources[msg.sourceId] || null,
       autoCut: msg.autoCut,
+      invert: !!msg.invert,
       sourceId: msg.sourceId
     };
 
@@ -293,7 +294,7 @@ function send(msg, run) {
       generation: msg.generation,
       items: out.items || [],
       plates: plates,
-      paper: out.paper,
+      mode: out.mode,
       pattern: out.pattern,
       fuzziness: out.fuzziness,
       seed: out.seed,
