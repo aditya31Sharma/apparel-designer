@@ -1,6 +1,6 @@
 {
-  "version": "2.1.1",
+  "version": "2.1.2",
   "minShell": "2.1.0",
-  "tag": "v2.1.1",
-  "notes": "The new app icon, and the app now updates itself from GitHub."
+  "tag": "v2.1.2",
+  "notes": "The preview is now the picture you get. Dragging a slider used to compute something cheaper and different, so what you aimed at was never what you got. Also: the phone layout, and halftone frames that draw in 13ms instead of 600."
 }

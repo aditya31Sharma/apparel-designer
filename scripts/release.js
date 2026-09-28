@@ -28,10 +28,50 @@ const tag = 'v' + version;
 /* minShell only moves when a change reaches something an update cannot
  * replace: the main process, the preload, or a native dependency. Everything
  * else ships as a source update to copies already installed, so raising it
- * without cause forces a 150MB download on people for no reason. */
-const shellTouched = execSync(
-  'git diff --name-only ' + (manifest.tag || 'HEAD') + '..HEAD -- electron/ package.json 2>/dev/null || true',
+ * without cause forces a 150MB download on people for no reason.
+ *
+ * Listed file by file rather than as the electron/ directory, because most of
+ * what is in there is test harnesses that never go into the build. Treating a
+ * change to the suite as a change to the shell would send everybody to the
+ * download page over a test they will never run. These are exactly the paths
+ * electron-builder packages, and the two lists have to agree. */
+const SHELL_FILES = [
+  'electron/main.js', 'electron/preload.js',
+  'electron/bgremove.js', 'electron/bgworker.js', 'electron/update.js'
+];
+
+const since = manifest.tag || 'HEAD';
+
+/* Against the working tree rather than HEAD, so this answers correctly
+ * whichever order the release is done in. */
+const changedFiles = execSync(
+  'git diff --name-only ' + since + ' -- ' + SHELL_FILES.join(' ') + ' 2>/dev/null || true',
   { cwd: ROOT }).toString().trim();
+
+/* A new dependency is a shell change too, and it does not show up in any of
+ * the files above. The version field is deliberately not consulted: bumping it
+ * is what a release is, and treating that as a shell change would send every
+ * installed copy to the download page on every release. */
+function depsOf(json) {
+  try {
+    const p = JSON.parse(json);
+    return JSON.stringify(p.dependencies || {});
+  } catch (e) {
+    return null;
+  }
+}
+
+let depsChanged = false;
+try {
+  const before = depsOf(execSync('git show ' + since + ':package.json', { cwd: ROOT }).toString());
+  const now = depsOf(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  depsChanged = before !== null && before !== now;
+} catch (e) {
+  // No such tag yet, which means there is nothing to compare against.
+}
+
+const shellTouched = [changedFiles, depsChanged ? 'package.json (dependencies)' : '']
+  .filter(Boolean).join('\n');
 
 const minShell = process.argv.includes('--shell') || shellTouched
   ? version
