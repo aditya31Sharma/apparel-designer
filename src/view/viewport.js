@@ -342,6 +342,109 @@
       window.addEventListener('pointerup', up);
     });
 
+    /* ---------- touch ---------- */
+
+    /* A trackpad reports a two finger swipe and a pinch as wheel events, so the
+     * handler above covers both. A touchscreen reports neither: it reports
+     * touches, and the same two gestures have to be assembled from them.
+     *
+     * One finger pans. On the desktop one finger selects and space pans, but a
+     * phone has no space bar, and every map and photo viewer on the platform
+     * pans with one finger. Warp handles keep working because they live in the
+     * overlay above this canvas and take the touch themselves; anything that
+     * reaches here landed on empty canvas.
+     *
+     * Two fingers pan and zoom at once, about the point between them, which is
+     * the one gesture people do without being told.
+     */
+    var live = null;          // the gesture in progress
+    var lastTap = 0, lastTapX = 0, lastTapY = 0;
+
+    function localPoint(t) {
+      var r = canvas.getBoundingClientRect();
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    }
+
+    function gestureOf(touches) {
+      var a = localPoint(touches[0]);
+      if (touches.length < 2) return { cx: a.x, cy: a.y, spread: 0 };
+      var b = localPoint(touches[1]);
+      var dx = b.x - a.x, dy = b.y - a.y;
+      return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+               spread: Math.sqrt(dx * dx + dy * dy) };
+    }
+
+    canvas.addEventListener('touchstart', function (e) {
+      if (!e.touches.length) return;
+      // Fingers arriving or leaving move the midpoint, so the gesture has to be
+      // rebased on every change or the artwork jumps.
+      var g = gestureOf(e.touches);
+      live = { cx: g.cx, cy: g.cy, spread: g.spread,
+               x: vp.view.x, y: vp.view.y, k: vp.view.k,
+               moved: false, count: e.touches.length };
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', function (e) {
+      if (!live || !e.touches.length) return;
+      e.preventDefault();
+      var g = gestureOf(e.touches);
+
+      if (e.touches.length !== live.count) {
+        live = { cx: g.cx, cy: g.cy, spread: g.spread,
+                 x: vp.view.x, y: vp.view.y, k: vp.view.k,
+                 moved: true, count: e.touches.length };
+        return;
+      }
+
+      // Zoom first, so the pan that follows is measured in the new scale.
+      var k = live.k;
+      if (live.count > 1 && live.spread > 12 && g.spread > 12) {
+        k = Math.max(0.01, Math.min(600, live.k * (g.spread / live.spread)));
+      }
+      // Keep whatever was under the midpoint at the start under it now.
+      vp.view.k = k;
+      vp.view.x = live.x + live.cx / live.k - g.cx / k;
+      vp.view.y = live.y + live.cy / live.k - g.cy / k;
+
+      if (Math.abs(g.cx - live.cx) > 3 || Math.abs(g.cy - live.cy) > 3 ||
+          Math.abs(g.spread - live.spread) > 3) live.moved = true;
+
+      schedule();
+      vp.onViewChange(vp.view);
+    }, { passive: false });
+
+    function endTouch(e) {
+      if (!live) return;
+      if (e.touches.length) {
+        // Down to fewer fingers rather than none: rebase and carry on.
+        var g = gestureOf(e.touches);
+        live = { cx: g.cx, cy: g.cy, spread: g.spread,
+                 x: vp.view.x, y: vp.view.y, k: vp.view.k,
+                 moved: true, count: e.touches.length };
+        return;
+      }
+      var wasTap = !live.moved && live.count === 1;
+      var px = live.cx, py = live.cy;
+      live = null;
+      if (!wasTap) return;
+
+      // Double tap fits, the way a photo viewer does. Two taps count as one
+      // gesture only if they land in the same place, so a tap at one edge and
+      // a tap at the other stay two separate taps.
+      var now = Date.now();
+      if (now - lastTap < 320 &&
+          Math.abs(px - lastTapX) < 40 && Math.abs(py - lastTapY) < 40) {
+        lastTap = 0;
+        if (vp.onDoubleTap) vp.onDoubleTap();
+        return;
+      }
+      lastTap = now; lastTapX = px; lastTapY = py;
+    }
+
+    canvas.addEventListener('touchend', endTouch, { passive: false });
+    canvas.addEventListener('touchcancel', endTouch, { passive: false });
+
     var ro = new ResizeObserver(function () { vp.invalidate(); });
     ro.observe(canvas);
 

@@ -592,6 +592,9 @@
     wireFiles();
     wireKeys();
     syncPanels();
+    // After the chrome is wired, because the phone layout rebinds some of what
+    // it just bound, and before the first paint so nothing is laid out twice.
+    if (window.Mobile) window.Mobile.start();
     paint();
     // Last line of boot on purpose: reaching it is the proof that whatever
     // source this launch is running actually works.
@@ -630,6 +633,9 @@
       viewport.fit(r ? transformedBounds(L, r.bbox) : null);
     };
     $('zoom100').onclick = function () { viewport.zoomTo(1); };
+    // Double tapping the canvas frames the artwork, which is what a photo
+    // viewer does and what there is no room for a button for on a phone.
+    viewport.onDoubleTap = function () { $('fit').click(); };
 
     $('gridBtn').onclick = function () {
       viewport.grid = !viewport.grid;
