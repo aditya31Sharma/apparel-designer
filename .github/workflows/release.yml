@@ -39,14 +39,6 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # Unsigned on purpose: notarising needs a paid Apple developer account.
-      # Without this, electron-builder goes looking for an identity in the
-      # runner's empty keychain and fails the build rather than skipping it.
-      - name: Build the dmg
-        run: npm run dist
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-
       - name: Check the version in the tag matches the one in package.json
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -57,6 +49,18 @@ jobs:
             echo "These have to agree, or installed copies update to a tag that is not here." >&2
             exit 1
           fi
+
+      # Unsigned on purpose: notarising needs a paid Apple developer account.
+      # Without this, electron-builder goes looking for an identity in the
+      # runner's empty keychain and fails the build rather than skipping it.
+      #
+      # --publish never matters as much: with a tag in the environment
+      # electron-builder decides to publish the dmg itself, and then fails for
+      # want of a token. Uploading is this workflow's job, one step down.
+      - name: Build the dmg
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - uses: softprops/action-gh-release@v2
         with:

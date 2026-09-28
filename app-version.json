@@ -1,6 +1,6 @@
 {
-  "version": "2.1.0",
+  "version": "2.1.1",
   "minShell": "2.1.0",
-  "tag": "v2.1.0",
-  "notes": "Self-updating from GitHub, and a new app icon."
+  "tag": "v2.1.1",
+  "notes": "The new app icon, and the app now updates itself from GitHub."
 }
