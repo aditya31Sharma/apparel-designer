@@ -146,6 +146,15 @@
         c.transform(m.a, m.b, m.c, m.d, m.e, m.f);
         c.globalAlpha = L.opacity === undefined ? 1 : L.opacity;
 
+        // Ink is subtractive and needs something to sit on. Without the paper
+        // the plates multiply straight onto the canvas and every colour turns
+        // to mud, and traced ink is dark on dark, which is not what the file
+        // will look like either way.
+        if (L.paper && L.paper !== 'none' && L.bbox) {
+          c.fillStyle = L.paper;
+          c.fillRect(L.bbox.x, L.bbox.y, L.bbox.width, L.bbox.height);
+        }
+
         // A photo nothing has been applied to yet. Drawn at its frame, under
         // the same matrix as everything else, so moving and rotating it work
         // before any effect is switched on.
@@ -158,8 +167,7 @@
           L.shapes.forEach(function (sh) {
             var paths = sh.paths || [sh.path];
             if (sh.fill && sh.fill !== 'none') {
-              c.fillStyle = sh.fill;
-              for (var i = 0; i < paths.length; i++) c.fill(paths[i], sh.rule || 'nonzero');
+              fillChunked(c, paths, sh.fill, sh.rule);
             }
             if (sh.stroke && sh.stroke !== 'none' && sh.strokeWidth > 0) {
               c.strokeStyle = sh.stroke;
@@ -170,16 +178,7 @@
           });
         }
 
-        if (L.plates) {
-          // Ink is subtractive and needs something to sit on. Without the paper
-          // the plates multiply straight onto the canvas and every colour turns
-          // to mud, which is not what the file will look like.
-          if (L.paper && L.paper !== 'none' && L.bbox) {
-            c.fillStyle = L.paper;
-            c.fillRect(L.bbox.x, L.bbox.y, L.bbox.width, L.bbox.height);
-          }
-          drawPlates(c, L);
-        }
+        if (L.plates) drawPlates(c, L);
         c.restore();
       });
       c.restore();
@@ -205,6 +204,67 @@
      */
     var plateLayer = null, plateCtx = null;
 
+    /* A scratch surface the size of whatever is being drawn into, kept between
+     * frames because allocating one of these per frame costs more than the
+     * work it saves. */
+    function scratchFor(target) {
+      if (!plateLayer) {
+        plateLayer = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(target.width, target.height)
+          : document.createElement('canvas');
+        plateCtx = null;
+      }
+      if (plateLayer.width !== target.width || plateLayer.height !== target.height) {
+        plateLayer.width = target.width;
+        plateLayer.height = target.height;
+        plateCtx = null;
+      }
+      if (!plateCtx) plateCtx = plateLayer.getContext('2d');
+      return plateCtx;
+    }
+
+    /* One shape, split across several Path2D objects, filled as one shape.
+     *
+     * The split exists because a hundred thousand subpaths in a single Path2D
+     * is quadratic to build. But a shape's holes are rings like any other, and
+     * filling chunk after chunk draws every hole that landed in a later chunk
+     * as a solid island instead of punching it. Under about 250 contours
+     * everything fits in one chunk and nothing shows; past that a traced photo
+     * fills in solid, which is exactly what "the detail disappears" looked
+     * like. A texture was getting the blame because a texture is what pushes
+     * the contour count over the line.
+     *
+     * Drawn with xor, each chunk flips what the ones before it left, so the
+     * layer ends up as the even-odd fill of every ring at once, which is what
+     * the exporter gets for free by writing them all into one path. Nested
+     * rings from a marching squares trace alternate direction, so even-odd and
+     * nonzero agree on them and the canvas and the file say the same thing.
+     */
+    function fillChunked(c, paths, colour, rule) {
+      if (paths.length === 1) {
+        c.fillStyle = colour;
+        c.fill(paths[0], rule || 'nonzero');
+        return;
+      }
+      var g = scratchFor(c.canvas);
+      var m = c.getTransform();
+      var alpha = c.globalAlpha;
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, plateLayer.width, plateLayer.height);
+      g.setTransform(m);
+      g.fillStyle = colour;
+      var prev = g.globalCompositeOperation;
+      g.globalCompositeOperation = 'xor';
+      for (var i = 0; i < paths.length; i++) g.fill(paths[i], 'evenodd');
+      g.globalCompositeOperation = prev;
+
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalAlpha = alpha;
+      c.drawImage(plateLayer, 0, 0);
+      c.restore();
+    }
+
     function drawPlates(c, L) {
       var n = 0;
       L.plates.forEach(function (pl) { n += pl.paths.length; });
@@ -222,20 +282,7 @@
         return;
       }
 
-      var target = c.canvas;
-      if (!plateLayer) {
-        plateLayer = typeof OffscreenCanvas !== 'undefined'
-          ? new OffscreenCanvas(target.width, target.height)
-          : document.createElement('canvas');
-        plateCtx = null;
-      }
-      if (plateLayer.width !== target.width || plateLayer.height !== target.height) {
-        plateLayer.width = target.width;
-        plateLayer.height = target.height;
-        plateCtx = null;
-      }
-      if (!plateCtx) plateCtx = plateLayer.getContext('2d');
-
+      scratchFor(c.canvas);
       var m = c.getTransform();
       var alpha = c.globalAlpha;
 

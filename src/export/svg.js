@@ -73,6 +73,15 @@
       var open = '  <g' + (R.name ? ' id="' + esc(R.name) + '"' : '') + tf + alpha + '>';
       var parts = [];
 
+      /* The ground the ink sits on, whether that ink is a screen or an outline
+       * traced from a photograph. It travels with the artwork so the file
+       * opens looking like the canvas did. */
+      if (R.paper && R.paper !== 'none' && R.bbox) {
+        parts.push('    <rect x="' + round(R.bbox.x, prec) + '" y="' + round(R.bbox.y, prec) +
+          '" width="' + round(R.bbox.width, prec) + '" height="' + round(R.bbox.height, prec) +
+          '" fill="' + R.paper + '"/>');
+      }
+
       /* A photo nothing has been applied to yet. It leaves as the picture it
        * is, embedded, because a file that opens empty is not an export of what
        * was on the canvas. Switch an effect on and it leaves as geometry, which
@@ -95,13 +104,6 @@
       });
 
       if (R.plates && R.plates.length) {
-        // The ground the ink multiplies onto travels with the artwork, so the
-        // file opens looking like the canvas did.
-        if (R.paper && R.paper !== 'none' && R.bbox) {
-          parts.push('    <rect x="' + round(R.bbox.x, prec) + '" y="' + round(R.bbox.y, prec) +
-            '" width="' + round(R.bbox.width, prec) + '" height="' + round(R.bbox.height, prec) +
-            '" fill="' + R.paper + '"/>');
-        }
         if (o.separations) {
           // One group per ink, named, nothing blended. This is what a printer
           // asks for when they want the plates apart.

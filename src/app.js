@@ -103,6 +103,7 @@
                  strokeWidth: i.strokeWidth };
       }),
       bbox: layer.source.bbox,
+      autoCut: layer.source.autoCut,
       effects: layer.effects.map(function (e) {
         return { type: e.type, on: e.on, params: JSON.parse(JSON.stringify(e.params)) };
       }),
@@ -347,7 +348,7 @@
           };
         }),
         plates: r.plates,
-        paper: r.plates ? r.paper : null,
+        paper: r.paper || null,
         bbox: r.bbox
       });
     });
@@ -442,7 +443,17 @@
     }
     if (scope === 'dither') {
       if (id === 'preset' && DITHER_PRESETS[v]) {
-        Object.assign(p, JSON.parse(JSON.stringify(DITHER_PRESETS[v].params)));
+        var next = JSON.parse(JSON.stringify(DITHER_PRESETS[v].params));
+        /* How much of a picture becomes ink belongs to the picture; how much
+         * heavier or lighter than the middle a style runs belongs to the
+         * style. So a style's threshold is applied as the offset it is from
+         * the 40% baseline, and a style stays a choice about the look rather
+         * than something that throws away a level measured from the artwork. */
+        var auto = L.source.autoCut;
+        if (auto !== undefined && next.imageCut !== undefined) {
+          next.imageCut = Math.max(0.1, Math.min(0.85, auto + (next.imageCut - 0.4)));
+        }
+        Object.assign(p, next);
       }
       // Choosing Import asks for the file rather than silently doing nothing.
       if (id === 'texture' && v === 'image' && !textureImage) $('textureFile').click();
@@ -471,6 +482,48 @@
   }
 
   /* ================= loading artwork ================= */
+
+  /* The threshold that decides how much of a photo becomes ink, read off the
+   * photo rather than averaged over all photos.
+   *
+   * One fixed number cannot serve both: a garment shot with no background and
+   * a drawing that is half white paper want thresholds twenty points apart,
+   * and getting it wrong is not subtle. Too low and the subject disappears,
+   * too high and everything dark fuses into one silhouette, which is what a
+   * hood, a shadow or a dark jacket does to a picture.
+   *
+   * So aim at a coverage instead of a level: the threshold at which about a
+   * third of the picture is ink. Measured against the pictures this was going
+   * wrong on, that lands where the answer looks right on each of them, and it
+   * is a rule that can be explained rather than a constant that cannot.
+   */
+  var INK_TARGET = 0.33;
+
+  function autoCut(px) {
+    if (!px || !px.data) return 0.4;
+    var d = px.data, hist = new Uint32Array(256), n = 0;
+    for (var i = 0; i < d.length; i += 4) {
+      // Composited onto white, the way the tracer sees it.
+      var a = d[i + 3] / 255;
+      var r = d[i] * a + 255 * (1 - a);
+      var g = d[i + 1] * a + 255 * (1 - a);
+      var b = d[i + 2] * a + 255 * (1 - a);
+      hist[(0.2126 * r + 0.7152 * g + 0.0722 * b) | 0]++;
+      n++;
+    }
+    if (!n) return 0.4;
+    var target = n * INK_TARGET, cum = 0;
+    for (var v = 0; v < 256; v++) {
+      cum += hist[v];
+      /* Capped, because on a bright picture a third of the frame is only
+       * reached by climbing into the sky behind the subject. Past about half
+       * luminance a threshold is inking things the eye reads as light, which
+       * is the signature of a background being swallowed rather than of a
+       * subject being found. */
+      if (cum >= target) return Math.max(0.18, Math.min(0.48, (v + 0.5) / 255));
+    }
+    return 0.4;
+  }
 
   function loadItems(items, name, bitmap, pixels) {
     var bbox = W.bounds(items.map(function (i) { return i.d; }));
@@ -549,6 +602,17 @@
         // A traced photo has no colours of its own worth keeping, so the Fill
         // control drives one. Halftone ignores this and uses its plates.
         L.paint.useSourceColours = false;
+        // Ink is dark and paper is white. Leaving the fill at white meant a
+        // traced photo drew as a white shape on a dark canvas, which is where
+        // "it turns into one white blob" came from: it was not the trace going
+        // wrong, it was the trace being shown inside out.
+        L.paint.fill = '#141414';
+
+        // Read once, from this picture, and used by everything that traces it.
+        var cut = autoCut(L.source.pixels);
+        L.source.autoCut = cut;
+        Doc.effect(L, 'dither').params.imageCut = cut;
+
         tool = 'halftone';
         syncPanels();
         markDirty(false);
@@ -624,7 +688,7 @@
           };
         }),
         plates: r.plates,
-        paper: r.plates ? r.paper : null,
+        paper: r.paper || null,
         pattern: r.pattern, fuzziness: r.fuzziness, seed: r.seed
       };
     }).filter(Boolean);

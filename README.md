@@ -52,12 +52,22 @@ pulled through a screen rather than printed by a machine.
 
 **Start with One colour.** Three recommended styles sit above the full list in
 both the Dither and the Halftone panel, and picking one changes every slider
-under it, which you are then free to move. The one that matters on a photo is
-**Threshold**: it decides how much of the picture becomes ink before any edge
-work happens. It used to be fixed at 55%, which turns anything with dark
-clothing or shadow into a solid blob, and no style touched it, so choosing a
-style changed the edge and not the thing that was actually wrong. Every style
-now sets it, and the default is 40%.
+under it, which you are then free to move.
+
+The one that matters on a photo is **Threshold**: it decides how much of the
+picture becomes ink before any edge work happens, and it is measured off the
+picture when you open it. One fixed number cannot serve both a garment shot with
+no background and a drawing that is half white paper, which want thresholds
+twenty points apart, and getting it wrong is not subtle: too low and the subject
+disappears, too high and everything dark fuses into one silhouette. So the tool
+aims at a coverage rather than a level, picking the threshold at which about a
+third of the picture is ink, capped so that a bright photograph does not reach up
+into the sky behind the subject. A style then applies as the offset it is from
+the middle, so choosing a look does not throw the measurement away.
+
+Ink traced out of a photograph is dark ink, and it arrives on paper. It used to
+arrive white, on the dark canvas, which is how a correct trace could look like
+one white blob.
 
 ### Background removal
 
@@ -177,7 +187,7 @@ npm run dist               # build dist/Apparel-Designer-mac-arm64.dmg
 
 ```bash
 npm test                   # 181 engine checks, no browser needed
-npm run suite              # 414 checks driving the real desktop build
+npm run suite              # 415 checks driving the real desktop build
 npm run bench              # timings for every heavy path
 npm run shots              # regenerate the screenshots in this README
 electron . --sheet         # render every effect over the test images
@@ -337,6 +347,17 @@ why the desktop build serves itself from a loopback HTTP server rather than from
   writing into the destination is fine while downscaling and silently wrong the
   moment the working bitmap is larger: untouched destination pixels stayed black,
   which screened empty transparent space at about 50%.
+- **Splitting a path splits its holes off too.** Outlines reach the canvas in
+  chunks of 250 subpaths, because a hundred thousand in one `Path2D` is
+  quadratic to build. Filled chunk by chunk, every hole that landed in a later
+  chunk was drawn as a solid island instead of punched out, so anything past 250
+  contours filled in solid: a traced photograph with a texture on it came out as
+  a black silhouette and the texture got the blame, because a texture is what
+  pushes the contour count over the line. Under 250 it never showed. Each chunk
+  is now drawn with `xor` onto a layer, so the chunks together come out as the
+  even-odd fill of every ring at once, which is what the exporter got for free
+  by writing them all into one path. The file was right the whole time; the
+  canvas was disagreeing with the thing it was previewing.
 - **`multiply` is priced per draw call.** A screen has to reach the canvas in chunks,
   because piling a hundred thousand subpaths into one `Path2D` is quadratic for every
   dot shape that is not a circle. That is about two thousand fills, and with multiply

@@ -244,6 +244,7 @@ self.onmessage = function (e) {
       bbox: msg.bbox,
       matte: msg.matte || null,
       pixels: sources[msg.sourceId] || null,
+      autoCut: msg.autoCut,
       sourceId: msg.sourceId
     };
 

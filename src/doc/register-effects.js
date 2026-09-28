@@ -152,6 +152,10 @@
           items: out,
           bbox: Geom.unionBounds(out),
           matte: input.matte,
+          // Ink traced out of a photograph is dark ink, and dark ink on a dark
+          // canvas is nothing. The ground travels with it, the way it does for
+          // a screen, so what is on the canvas is what gets printed.
+          paper: traced ? '#ffffff' : null,
           stats: { shapes: kept, points: points }
         };
       });

@@ -167,7 +167,7 @@
     var px = input.pixels;
     if (!px) return input.items;
 
-    var key = [input.sourceId || 'x', px.w, px.h, p.imageCut, p.imageLevels,
+    var key = [input.sourceId || 'x', px.w, px.h, p.imageCut, input.autoCut, p.imageLevels,
                input.matte ? input.matte.w + 'x' + input.matte.h : 'none'].join('|');
     if (traceCache.key === key) return traceCache.items;
     var G = root.Grunge;
@@ -188,7 +188,12 @@
     var b = input.bbox;
     var kx = b.width / w, ky = b.height / h;
     var levels = Math.max(1, Math.min(4, Math.round(p.imageLevels || 1)));
-    var cut = p.imageCut === undefined ? 0.55 : p.imageCut;
+    /* The effect's own setting wins. Failing that, the threshold measured from
+     * this picture when it was opened, and only failing that a constant. Warp
+     * traces photos too and has no threshold control of its own, so without
+     * this it would keep using a number chosen for something else. */
+    var cut = p.imageCut !== undefined ? p.imageCut
+            : input.autoCut !== undefined ? input.autoCut : 0.55;
     var items = [];
 
     for (var k = 0; k < levels; k++) {
