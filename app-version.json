@@ -1,6 +1,6 @@
 {
-  "version": "2.3.0",
+  "version": "2.3.1",
   "minShell": "2.1.0",
-  "tag": "v2.3.0",
-  "notes": "Photos no longer turn into a white blob: traced ink is dark now, on paper, and the threshold is measured off your picture instead of being one number for every picture. Detailed artwork keeps its detail past 250 contours."
+  "tag": "v2.3.1",
+  "notes": "Remove background now shows. The cut was being computed correctly and never drawn, so the picture looked unchanged."
 }

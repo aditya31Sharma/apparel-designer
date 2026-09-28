@@ -1,7 +1,7 @@
 {
   "name": "apparel-designer",
   "productName": "Apparel Designer",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Warp, dither and CMYK halftone screening for garment artwork. Vector in, vector out.",
   "main": "electron/main.js",
   "author": "Aditya Sharma",
