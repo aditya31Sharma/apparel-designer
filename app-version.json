@@ -1,6 +1,6 @@
 {
-  "version": "2.5.0",
-  "minShell": "2.1.0",
-  "tag": "v2.5.0",
-  "notes": "A Fill slider closes the gap between halftone dots until they fuse. A folded More section in each panel brings back weight, holes, patchiness, melt, detail, black plate and seed, and the dither texture is a choice again."
+  "version": "2.6.0",
+  "minShell": "2.6.0",
+  "tag": "v2.6.0",
+  "notes": "Type, in any font on this Mac: Adobe Fonts, the fonts in Downloads (zipped or not), yours and the system's. Needs a fresh download this once, because the app itself learned to read fonts."
 }
