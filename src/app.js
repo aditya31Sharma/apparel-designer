@@ -593,6 +593,9 @@
     wireKeys();
     syncPanels();
     paint();
+    // Last line of boot on purpose: reaching it is the proof that whatever
+    // source this launch is running actually works.
+    if (window.Updater) window.Updater.start();
   }
 
   /* ---------- chrome ---------- */

@@ -29,5 +29,14 @@ contextBridge.exposeInMainWorld('desktop', {
   backgroundStatus: () => ipcRenderer.invoke('bg:status'),
   onBackgroundProgress: (fn) => ipcRenderer.on('bg:progress', (_e, stage) => fn(stage)),
 
-  onMenu: (name, fn) => { menuHandlers[name] = fn; }
+  onMenu: (name, fn) => { menuHandlers[name] = fn; },
+
+  /* Updating. The page tells the main process it managed to start, which is
+   * what stops a broken update from being kept. */
+  ready: () => ipcRenderer.send('app:alive'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  onUpdate: (fn) => ipcRenderer.on('update:state', (_e, state) => fn(state)),
+  restart: () => ipcRenderer.invoke('update:restart'),
+  openReleases: () => ipcRenderer.invoke('update:releases'),
+  revertUpdate: () => ipcRenderer.invoke('update:revert')
 });

@@ -27,7 +27,15 @@ const fs = require('fs/promises');
 const http = require('http');
 const net = require('net');
 
+const UPDATE = require('./update.js');
+
+/* Where the bundled source lives, and where an update from GitHub lives once
+ * one has been unpacked. The overlay is consulted first, file by file, so a
+ * half-written update can never leave a page unable to find an asset. */
 const ROOT = path.join(__dirname, '..');
+let overlayDir = null;
+let sourceVersion = null;
+let lastUpdateState = null;
 let win = null;
 
 /* The app is served over a loopback HTTP origin rather than opened off disk.
@@ -50,6 +58,24 @@ const MIME = {
 };
 
 let serverOrigin = null;
+
+/* A request maps to the updated copy of a file when there is one, and to the
+ * bundled copy otherwise. Both candidates are checked against their own root,
+ * so a path with .. in it still cannot climb out of either. */
+function resolveAsset(rel) {
+  const roots = overlayDir ? [overlayDir, ROOT] : [ROOT];
+  let fallback = null;
+  for (const root of roots) {
+    const file = path.normalize(path.join(root, rel));
+    if (!file.startsWith(root + path.sep) && file !== root) continue;
+    if (!fallback) fallback = file;
+    try {
+      require('fs').accessSync(file);
+      return file;
+    } catch (e) { /* try the next root */ }
+  }
+  return fallback;
+}
 
 function startServer() {
   return new Promise((resolve, reject) => {
@@ -87,10 +113,8 @@ function startServer() {
       }
 
       // Never serve anything outside the app directory, whatever the URL says.
-      const file = path.normalize(path.join(ROOT, rel));
-      if (!file.startsWith(ROOT + path.sep) && file !== ROOT) {
-        res.writeHead(403); res.end('forbidden'); return;
-      }
+      const file = resolveAsset(rel);
+      if (!file) { res.writeHead(403); res.end('forbidden'); return; }
 
       try {
         const body = await fs.readFile(file);
@@ -143,6 +167,12 @@ function createWindow() {
 
   win.loadURL(serverOrigin + '/index.html');
   win.once('ready-to-show', () => win.show());
+
+  // A reload throws away whatever notice was on screen, so put it back.
+  win.webContents.on('did-finish-load', () => {
+    if (lastUpdateState) win.webContents.send('update:state',
+      Object.assign({}, lastUpdateState, { asked: false }));
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -203,7 +233,24 @@ function buildMenu() {
         { label: 'Remove Background', accelerator: 'CmdOrCtrl+Alt+B', click: send('menu:removebg') }
       ]
     },
-    { role: 'windowMenu' }
+    { role: 'windowMenu' },
+    {
+      label: 'Help',
+      submenu: [
+        { label: 'Check for Updates', click: () => runUpdateCheck(true) },
+        { label: 'Use the Built-in Version',
+          click: () => {
+            UPDATE.revert(app.getPath('userData'));
+            app.relaunch();
+            app.exit(0);
+          } },
+        { type: 'separator' },
+        { label: 'Project on GitHub',
+          click: () => shell.openExternal('https://github.com/' + UPDATE.REPO) },
+        { label: 'Report a Problem',
+          click: () => shell.openExternal('https://github.com/' + UPDATE.REPO + '/issues/new') }
+      ]
+    }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -256,21 +303,70 @@ ipcMain.handle('bg:status', async () => {
   }
 });
 
+/* ---------- updating ---------- */
+
+/* The renderer reports in once it has finished starting. Until it does, the
+ * launch is treated as failed, which is how a bad update gets rolled back. */
+ipcMain.on('app:alive', () => UPDATE.markAlive(app.getPath('userData')));
+
+ipcMain.handle('update:check', async () => runUpdateCheck(true));
+
+ipcMain.handle('update:restart', () => { app.relaunch(); app.exit(0); });
+
+ipcMain.handle('update:releases', () => shell.openExternal(UPDATE.RELEASES));
+
+ipcMain.handle('update:revert', () => {
+  UPDATE.revert(app.getPath('userData'));
+  app.relaunch();
+  app.exit(0);
+});
+
+async function runUpdateCheck(asked) {
+  // A checkout being developed in is the source of truth; nothing to update.
+  if (!app.isPackaged) {
+    const dev = { state: 'dev', asked: !!asked };
+    if (asked && win && !win.isDestroyed()) win.webContents.send('update:state', dev);
+    return dev;
+  }
+  const res = await UPDATE.check(app.getPath('userData'), app.getVersion(), sourceVersion);
+  res.asked = !!asked;
+  lastUpdateState = res;
+  if (win && !win.isDestroyed()) win.webContents.send('update:state', res);
+  return res;
+}
+
 /* ---------- lifecycle ---------- */
 
 const SELFTEST = process.argv.includes('--selftest');
 const BENCH = process.argv.includes('--bench');
 const SUITE = process.argv.includes('--suite');
 const SHEET = process.argv.includes('--sheet');
+const SHOTS = process.argv.includes('--shots');
 // Benchmarks have to run at the pixel density a real display has, or the cache
 // is a quarter of the size it will be in use and every number flatters.
 const DPR_ARG = process.argv.find((a) => a.startsWith('--dpr='));
 if (DPR_ARG) app.commandLine.appendSwitch('force-device-scale-factor', DPR_ARG.split('=')[1]);
 
 app.whenReady().then(async () => {
+  if (app.isPackaged) {
+    const picked = UPDATE.resolveOverlay(app.getPath('userData'), app.getVersion());
+    overlayDir = picked.dir;
+    sourceVersion = picked.version;
+    if (picked.recovered) {
+      console.warn('update ' + picked.recovered + ' did not start; back on the bundled source');
+    }
+    UPDATE.markBooting(app.getPath('userData'), overlayDir ? sourceVersion : null);
+  } else {
+    sourceVersion = app.getVersion();
+  }
+
   await startServer();
   createWindow();
   buildMenu();
+
+  // Well after the window is up, so a slow network never delays the first
+  // paint. Failures are silent by design: the app works offline.
+  if (app.isPackaged) setTimeout(() => { runUpdateCheck(); }, 2500);
   // A stalled suite should say where it stalled rather than time out silently.
   if (SUITE) {
     const tick = setInterval(async () => {
@@ -284,8 +380,8 @@ app.whenReady().then(async () => {
     app.on('before-quit', () => clearInterval(tick));
   }
 
-  if (SELFTEST || BENCH || SUITE || SHEET) {
-    const mod = SHEET ? './sheet.js' : SUITE ? './suite.js' : BENCH ? './bench.js' : './selftest.js';
+  if (SELFTEST || BENCH || SUITE || SHEET || SHOTS) {
+    const mod = SHOTS ? './shots.js' : SHEET ? './sheet.js' : SUITE ? './suite.js' : BENCH ? './bench.js' : './selftest.js';
     require(mod).run(win, app, path.join(ROOT, 'build'))
       .catch((err) => { console.error(err); app.exit(1); });
   }
