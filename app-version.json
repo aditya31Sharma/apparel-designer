@@ -1,6 +1,6 @@
 {
-  "version": "2.2.0",
+  "version": "2.3.0",
   "minShell": "2.1.0",
-  "tag": "v2.2.0",
-  "notes": "Three recommended styles at the top of the Dither and Halftone panels, starting with One colour. And a Threshold control, because the old fixed one turned dark photos into a solid blob and no style could fix it."
+  "tag": "v2.3.0",
+  "notes": "Photos no longer turn into a white blob: traced ink is dark now, on paper, and the threshold is measured off your picture instead of being one number for every picture. Detailed artwork keeps its detail past 250 contours."
 }
