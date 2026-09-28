@@ -143,9 +143,14 @@ Nothing is sent anywhere during a check. It is one request for a small file.
 | Shift and scroll | Pan horizontally |
 | Space and drag, or middle-drag | Pan |
 
-Nothing is applied when you open a file. Switch on the effects you want, in any
-combination. Your position, size, rotation, opacity, fill and stroke survive
-every one of them.
+Nothing is applied when you open a file, including a photo: it arrives as the
+photo, and the first thing that happens to it is the thing you ask for. Switch on
+the effects you want, in any combination. Your position, size, rotation, opacity,
+fill and stroke survive every one of them.
+
+A photo you have applied nothing to exports as that photo, embedded, because a
+file that opens empty is not an export of what was on the canvas. Switch an
+effect on and it exports as geometry, which is what the tool is for.
 
 ---
 
@@ -163,7 +168,7 @@ npm run dist               # build dist/Apparel-Designer-mac-arm64.dmg
 
 ```bash
 npm test                   # 181 engine checks, no browser needed
-npm run suite              # 381 checks driving the real desktop build
+npm run suite              # 383 checks driving the real desktop build
 npm run bench              # timings for every heavy path
 npm run shots              # regenerate the screenshots in this README
 electron . --sheet         # render every effect over the test images

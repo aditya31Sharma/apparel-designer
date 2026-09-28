@@ -73,6 +73,16 @@
       var open = '  <g' + (R.name ? ' id="' + esc(R.name) + '"' : '') + tf + alpha + '>';
       var parts = [];
 
+      /* A photo nothing has been applied to yet. It leaves as the picture it
+       * is, embedded, because a file that opens empty is not an export of what
+       * was on the canvas. Switch an effect on and it leaves as geometry, which
+       * is what this tool is for. */
+      if (R.image && R.bbox) {
+        parts.push('    <image x="' + round(R.bbox.x, prec) + '" y="' + round(R.bbox.y, prec) +
+          '" width="' + round(R.bbox.width, prec) + '" height="' + round(R.bbox.height, prec) +
+          '" preserveAspectRatio="none" href="' + R.image + '"/>');
+      }
+
       (R.shapes || []).forEach(function (sh) {
         var a = ' fill="' + (sh.fill && sh.fill !== 'none' ? sh.fill : 'none') + '"';
         if (sh.rule === 'evenodd') a += ' fill-rule="evenodd"';

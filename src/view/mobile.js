@@ -253,7 +253,7 @@
         '<span><b>Double tap</b> to fit</span>';
     }
     var p = document.querySelector('#empty p');
-    if (p) p.textContent = 'Open a photo or an SVG. Photos get screened.';
+    if (p) p.textContent = 'Open a photo or an SVG. Nothing is applied until you switch it on.';
     var drop = $('drop');
     if (drop) drop.remove();      // nothing is dragged onto a phone
   }

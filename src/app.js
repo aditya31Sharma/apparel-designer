@@ -217,7 +217,7 @@
 
     var shapes = (out.items || []).map(function (it) {
       return {
-        points: it.points, offsets: it.offsets, d: it.d,
+        points: it.points, offsets: it.offsets, d: it.d, frame: !!it.frame,
         paths: window.Geom.itemPaths(it),
         fill: it.fill, stroke: it.stroke, strokeWidth: it.strokeWidth || 0
       };
@@ -242,7 +242,12 @@
     window.__timing.buildPaths = Math.round(performance.now() - tAccept);
     window.__timing.workerMs = ms;
     var tPaint = performance.now();
-    showStats(stats, ms, shapes, plates, out.pattern);
+    var untouched = untouchedImage(layer, renders[layer.id]);
+    showStats(stats, ms, shapes, plates, out.pattern, untouched ? {
+      width: Math.round(layer.source.bbox.width),
+      height: Math.round(layer.source.bbox.height),
+      uri: imageUriFor(layer)
+    } : null);
     paint();
     window.__timing.firstPaint = Math.round(performance.now() - tPaint);
   }
@@ -271,8 +276,24 @@
     return Math.max(1, Math.round(b / 1024)) + 'KB';
   }
 
-  function showStats(stats, ms, shapes, plates, pattern) {
+  function showStats(stats, ms, shapes, plates, pattern, raw) {
     var bits = [];
+    // A photo with nothing applied has no geometry to count, and counting the
+    // one frame rectangle holding its pixels as "1 shapes" says nothing.
+    if (raw) {
+      var box0 = $('stats');
+      if (box0) {
+        box0.textContent = 'photo  ·  ' + fmtN(raw.width) + ' x ' + fmtN(raw.height) +
+          '  ·  nothing applied';
+      }
+      var size0 = $('exportSize');
+      if (size0) {
+        var bytes = raw.uri ? Math.round(raw.uri.length * 0.75) : 0;
+        size0.textContent = bytes ? '~' + fmtBytes(bytes) : '';
+        size0.classList.toggle('heavy', bytes > 8 * 1048576);
+      }
+      return;
+    }
     if (plates) {
       var n = 0;
       plates.forEach(function (p) { n += p.dots.length / H.STRIDE; });
@@ -306,6 +327,14 @@
       var r = renders[L.id];
       if (!r) return;
       var paintDef = paintFor(L);
+      var raw = untouchedImage(L, r);
+      if (raw) {
+        scene.layers.push({
+          matrix: Doc.layerMatrix(L), opacity: L.paint.opacity,
+          image: raw, bbox: r.bbox
+        });
+        return;
+      }
       scene.layers.push({
         matrix: Doc.layerMatrix(L),
         opacity: L.paint.opacity,
@@ -328,6 +357,19 @@
     overlay.mode = tool === 'warp' ? 'warp' : 'transform';
     overlay.draw();
     syncHud();
+  }
+
+  /* A photo that no effect has touched yet.
+   *
+   * An imported picture is carried as a frame rectangle with the pixels riding
+   * along, and every effect that consumes it replaces that rectangle with real
+   * outlines. So as long as what came back is still the frame, there is nothing
+   * to draw but the picture, and the picture is what should be drawn. */
+  function untouchedImage(L, r) {
+    if (!L.source.bitmap || !r || r.plates) return null;
+    if (!r.shapes || !r.shapes.length) return null;
+    for (var i = 0; i < r.shapes.length; i++) if (!r.shapes[i].frame) return null;
+    return L.source.bitmap;
   }
 
   function paintFor(L) {
@@ -444,6 +486,7 @@
     doc.selection = layer.id;
     renders = {};
     pixelsSent = null;
+    imageUris = {};
     history.clear();
 
     $('srcName').textContent = name + '  ·  ' +
@@ -452,7 +495,7 @@
     $('empty').classList.add('gone');
     clearFail();
     syncPanels();
-    compute(1);
+    compute();
     setTimeout(function () { viewport.fit(bbox); }, 0);
   }
 
@@ -493,14 +536,17 @@
         file.name, img, pixels);
       var L = Doc.selected(doc);
       if (L) {
-        // An image on its own has nothing to show until an effect runs, so give
-        // it the halftone straight away: that is what an image is here for.
+        // Nothing is switched on. An imported photo used to arrive already
+        // screened, because a photo with no effect running had nothing to draw:
+        // its layer is a bare frame rectangle with the pixels riding along, and
+        // a frame with no fill draws as nothing at all. The viewport now draws
+        // the picture itself in that case, so an import can look like what was
+        // imported and the first thing the tool does to your artwork can be
+        // the thing you asked for.
+        //
         // A traced photo has no colours of its own worth keeping, so the Fill
-        // control drives it. Halftone ignores this and uses its plates.
+        // control drives one. Halftone ignores this and uses its plates.
         L.paint.useSourceColours = false;
-        // Dot pitch holds whatever size the artwork is, so nothing has to be
-        // recalculated here any more.
-        Doc.effect(L, 'halftone').on = true;
         tool = 'halftone';
         syncPanels();
         markDirty(false);
@@ -523,11 +569,45 @@
 
   /* ================= export ================= */
 
+  /* The imported picture as a data URI, for the case where it is what gets
+   * exported. Built once per layer: re-encoding a 27 megapixel photo to PNG on
+   * every keystroke in the Save button's size readout is not free. */
+  var imageUris = {};
+
+  function imageUriFor(L) {
+    if (imageUris[L.id]) return imageUris[L.id];
+    var img = L.source.bitmap;
+    if (!img) return null;
+    try {
+      // The picture as it arrived, not the working copy: the pixels kept for
+      // the effects are capped in size, and an export should not be.
+      var w = img.naturalWidth || img.width;
+      var h = img.naturalHeight || img.height;
+      if (!w || !h) return null;
+      // A real element, because toDataURL is not on OffscreenCanvas, which is
+      // what the shared helper hands back in a browser that has one.
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      imageUris[L.id] = c.toDataURL('image/png');
+      return imageUris[L.id];
+    } catch (e) {
+      return null;
+    }
+  }
+
   function buildRenders() {
     return doc.layers.map(function (L) {
       var r = renders[L.id];
       if (!r) return null;
       var pd = paintFor(L);
+      if (untouchedImage(L, r)) {
+        return {
+          name: L.name, matrix: Doc.layerMatrix(L), bbox: r.bbox,
+          opacity: L.paint.opacity, shapes: [], plates: null,
+          image: imageUriFor(L)
+        };
+      }
       return {
         name: L.name,
         matrix: Doc.layerMatrix(L),

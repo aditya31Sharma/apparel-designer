@@ -146,6 +146,14 @@
         c.transform(m.a, m.b, m.c, m.d, m.e, m.f);
         c.globalAlpha = L.opacity === undefined ? 1 : L.opacity;
 
+        // A photo nothing has been applied to yet. Drawn at its frame, under
+        // the same matrix as everything else, so moving and rotating it work
+        // before any effect is switched on.
+        if (L.image && L.bbox) {
+          c.imageSmoothingQuality = 'high';
+          c.drawImage(L.image, L.bbox.x, L.bbox.y, L.bbox.width, L.bbox.height);
+        }
+
         if (L.shapes) {
           L.shapes.forEach(function (sh) {
             var paths = sh.paths || [sh.path];

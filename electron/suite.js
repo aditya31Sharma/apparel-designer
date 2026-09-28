@@ -246,7 +246,30 @@ const SCRIPT = `(async function(){
   // ================= photo =================
   var P = await loadFile('doom.jpg','image/jpeg');
   check('photo loads', !!P && !!P.source.pixels, P && P.source.pixels && (P.source.pixels.w+'x'+P.source.pixels.h));
-  check('photo auto-picks halftone', Doc.effect(P,'halftone').on);
+  /* An import applies nothing. A photo used to arrive already screened,
+   * because a bare frame rectangle with pixels riding along draws as nothing;
+   * the viewport draws the picture itself in that case now, so the first thing
+   * that happens to your artwork can be the thing you asked for. */
+  check('an imported photo has nothing applied',
+    P.effects.every(function(e){ return !e.on; }),
+    P.effects.filter(function(e){ return e.on; }).map(function(e){ return e.type; }).join(',') || 'none');
+  check('an imported photo still draws', (function(){
+    var canvas = document.getElementById('canvas');
+    var g = canvas.getContext('2d');
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var mid = window.Doc.applyMatrix(window.Doc.layerMatrix(P),
+      P.source.bbox.width / 2, P.source.bbox.height / 2);
+    var s2 = window.App.viewport().toScreen(mid);
+    var px = g.getImageData(Math.round(s2.x * dpr), Math.round(s2.y * dpr), 1, 1).data;
+    window.__midPx = [px[0], px[1], px[2]];
+    // Anything but the canvas colour behind it. An unscreened photo used to
+    // come out as nothing at all.
+    return Math.abs(px[0] - 30) > 8 || Math.abs(px[1] - 30) > 8 || Math.abs(px[2] - 30) > 8;
+  })(), JSON.stringify(window.__midPx));
+  check('an imported photo exports as the picture', (function(){
+    var svg = window.App.svgText(false);
+    return svg.indexOf('<image') > 0 && svg.indexOf('data:image/png') > 0;
+  })(), 'svg ' + window.App.svgText(false).length + ' bytes');
   check('halftone is sized by dot pitch, not cells across',
     Doc.effect(P,'halftone').params.pitch > 0 &&
     Doc.effect(P,'halftone').params.frequency === undefined,
@@ -354,11 +377,16 @@ const SCRIPT = `(async function(){
   Doc.effect(A,'halftone').on = true;
   Doc.effect(A,'halftone').params.pitch = 5;
   await recompute();
+  /* Framed and painted before anything is read back. The canvas is drawn in an
+   * animation frame after the result is accepted, so clicking fit and sampling
+   * in the same breath reads the frame before the one being asked about. */
+  document.getElementById('fit').click();
+  await wait(300);
+  await frame();
   check('transparent areas take no ink', (function(){
     var canvas = document.getElementById('canvas');
     var g = canvas.getContext('2d');
     var vp = window.App.viewport();
-    document.getElementById('fit').click();
     // sample just inside the top-left of the artwork frame, which is transparent
     var corner = window.Doc.applyMatrix(window.Doc.layerMatrix(A), 12, 12);
     var s = vp.toScreen(corner);
