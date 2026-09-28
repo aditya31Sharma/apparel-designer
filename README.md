@@ -50,6 +50,15 @@ Signed distance field ink erosion: spatter, pitting, blotching, spread past the
 edge, nine grunge textures and a melt pass. The thing that makes a print look
 pulled through a screen rather than printed by a machine.
 
+**Start with One colour.** Three recommended styles sit above the full list in
+both the Dither and the Halftone panel, and picking one changes every slider
+under it, which you are then free to move. The one that matters on a photo is
+**Threshold**: it decides how much of the picture becomes ink before any edge
+work happens. It used to be fixed at 55%, which turns anything with dark
+clothing or shadow into a solid blob, and no style touched it, so choosing a
+style changed the edge and not the thing that was actually wrong. Every style
+now sets it, and the default is 40%.
+
 ### Background removal
 
 Cuts the subject out of a photo so the effects stop putting ink on the sky. Runs
@@ -168,7 +177,7 @@ npm run dist               # build dist/Apparel-Designer-mac-arm64.dmg
 
 ```bash
 npm test                   # 181 engine checks, no browser needed
-npm run suite              # 383 checks driving the real desktop build
+npm run suite              # 414 checks driving the real desktop build
 npm run bench              # timings for every heavy path
 npm run shots              # regenerate the screenshots in this README
 electron . --sheet         # render every effect over the test images

@@ -69,14 +69,18 @@
       meltRadius: 0, meltCut: 0.5,
       scale: 1,
       pxPerUnit: 2, detail: 0.45, seed: 1,
-      imageCut: 0.55, imageLevels: 1,
+      // Measured on real photographs rather than picked: 0.55 floods anything
+      // with dark clothing or shadow into one solid mass, which is what made
+      // the dither look like a blob instead of a print.
+      imageCut: 0.4, imageLevels: 1,
       preset: ''
     },
     run: function (input, p, ctx) {
       if (!ctx.maskFromPaths) return null;
       // A photo has no outline to erode, so trace its dark areas into one first.
       // Without this the dither would faithfully erode the bounding rectangle.
-      var items = needsTrace(input, ctx) ? ctx.traceImage(input, p) : input.items;
+      var traced = needsTrace(input, ctx);
+      var items = traced ? ctx.traceImage(input, p) : input.items;
       if (!items || !items.length) return null;
       var s = p.scale || 1;
       var o = {
@@ -106,14 +110,33 @@
         return Promise.resolve(G.fromPaths([d], bb, opt));
       };
 
-      return items.reduce(function (chain, it) {
+      /* Tone steps. A photo traced at several thresholds gives nested bands,
+       * darkest first, and drawing them all in the same ink used to add up to
+       * exactly what the widest band alone would have looked like: more work,
+       * no difference. One ink cannot print grey, but it can print broken, so
+       * each lighter band is chewed harder than the one inside it. The dark
+       * core stays solid and the midtones break up towards the paper, which is
+       * how a one colour print carries more than one tone. */
+      function forBand(idx) {
+        if (!traced || items.length < 2) return o;
+        var lift = idx / (items.length - 1);
+        return Object.assign({}, o, {
+          roughness: o.roughness * (1 + lift * 1.4) + lift * 1.8,
+          pit: Math.min(0.45, o.pit + lift * 0.14),
+          spatter: Math.min(1, o.spatter + lift * 0.08),
+          blotchAmount: Math.min(1, o.blotchAmount + lift * 0.08)
+        });
+      }
+
+      return items.reduce(function (chain, it, idx) {
         return chain.then(function () {
           var bb = Geom.itemBounds(it);
           if (!bb.width || !bb.height) return;
+          var band = forBand(idx);
           // Keep the working bitmap sane however far Detail is pushed.
-          var px = Math.min(o.pxPerUnit, 2600 / Math.max(bb.width, bb.height));
+          var px = Math.min(band.pxPerUnit, 2600 / Math.max(bb.width, bb.height));
           return erode(Geom.itemPathData(it), bb,
-            Object.assign({}, o, { pxPerUnit: px })).then(function (r) {
+            Object.assign({}, band, { pxPerUnit: px })).then(function (r) {
             if (!r || !r.points || !r.points.length) return;
             kept += r.stats.kept; points += r.stats.points;
             // Outlines leave as numbers. The string is built only on export.

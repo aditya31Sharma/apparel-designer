@@ -166,6 +166,10 @@
 
     /* Captioned tiles: dither styles, textures, halftone presets. */
     tiles: function (row, api) {
+      // A row can drive a setting other than the one it is filed under, so the
+      // same choice can appear twice: a short recommended group at the top and
+      // the full list below it.
+      var key = row.bind || row.id;
       var node = el('<div class="tiles" data-rowid="' + row.id + '"></div>');
       function paint(items) {
         node.innerHTML = items.map(function (t) {
@@ -176,7 +180,7 @@
         }).join('');
         node.querySelectorAll('.preset').forEach(function (p) {
           p.addEventListener('click', function () {
-            api.set(row.id, p.dataset.v); api.commit(row.id);
+            api.set(key, p.dataset.v); api.commit(key);
           });
         });
       }
@@ -299,11 +303,14 @@
           });
         }
       }
+      // A whole section can be conditional, so a heading with nothing under it
+      // never appears.
+      if (section.showIf) sec.dataset.showif = section.showIf;
       (section.rows || []).forEach(function (row) {
         var make = KINDS[row.kind];
         if (!make) return;
         var built = make(row, api);
-        if (row.id) rows[row.id] = built;
+        if (row.id) { built.bind = row.bind || row.id; rows[row.id] = built; }
         else rows['__' + Math.random()] = built;
         if (row.showIf) built.node.dataset.showif = row.showIf;
         sec.appendChild(built.node);
@@ -322,7 +329,7 @@
           // A pair row owns two values and reads them itself, so it has nothing
           // to be handed and must still be told to refresh.
           if (r.pair) { r.show(); return; }
-          var v = api.get(id);
+          var v = api.get(r.bind || id);
           if (v !== undefined) r.show(v);
         });
         container.querySelectorAll('[data-showif]').forEach(function (n) {

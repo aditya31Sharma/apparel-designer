@@ -164,6 +164,28 @@ const SCRIPT = `(async function(){
 
   // ---- dither: every style preset ----
   var ditherTimes = [];
+  /* Every dither style has to decide how much of a photo becomes ink. Leaving
+   * imageCut out of them meant all fifteen inherited one threshold, and on
+   * anything with dark clothing that threshold filled the picture in: picking
+   * a style changed the edge and not the thing that was actually wrong. */
+  var dmissing = Object.keys(window.DITHER_PRESETS).filter(function (k) {
+    return window.DITHER_PRESETS[k].params.imageCut === undefined;
+  });
+  check('every dither style sets the photo threshold', dmissing.length === 0, dmissing.join(',') || 'all set');
+
+  /* A short recommended group at the top of each panel, and nothing appearing
+   * in both it and the full list below. */
+  ['DITHER_PRESETS', 'HALFTONE_PRESETS'].forEach(function (table) {
+    var t = window[table];
+    var starred = Object.keys(t).filter(function (k) { return t[k].star; });
+    check(table + ' has a recommended group', starred.length >= 2 && starred.length <= 4,
+      starred.join(',') || 'none');
+  });
+  check('one colour is offered for both effects',
+    !!window.DITHER_PRESETS.stencil && window.HALFTONE_PRESETS.onecolour &&
+    window.HALFTONE_PRESETS.onecolour.params.mode === 'mono',
+    window.HALFTONE_PRESETS.onecolour && window.HALFTONE_PRESETS.onecolour.params.mode);
+
   var dnames = Object.keys(window.DITHER_PRESETS);
   for (i = 0; i < dnames.length; i++){
     var r2 = await runCase('dither/' + dnames[i], (function(k){ return function(){

@@ -457,6 +457,8 @@
     if (cond === 'duotone') return p.mode === 'duotone' || p.mode === 'mono';
     if (cond === 'cmyk') return p.mode === 'cmyk';
     if (cond === 'texture') return p.texture && p.texture !== 'none';
+    // The tone controls only mean anything when there is a photo to threshold.
+    if (cond === 'photo') return !!L.source.pixels;
     return true;
   }
 
