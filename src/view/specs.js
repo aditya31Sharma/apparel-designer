@@ -132,6 +132,21 @@
     cracked: { label: 'Cracked', tip: 'Thin branching splits running through the ink', params: { imageCut: 0.42, imageLevels: 1, grain: 1.8, roughness: 4, bias: 0.5, blotchAmount: 0.6, spatter: 0.2, pit: 0.08, spread: 1, spreadDensity: 0.6, texture: 'crack', textureAmount: 0.6, textureScale: 4.5, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } }
   };
 
+  var TEXTURE_LABELS = {
+    none: 'None', rough: 'Rough', crust: 'Crust', speckle: 'Speckle', crack: 'Cracks',
+    scan: 'Scan lines', fibre: 'Fibre', concrete: 'Concrete', halftone: 'Halftone',
+    spray: 'Spray', image: 'An image of yours'
+  };
+
+  function textureOptions() {
+    var list = [{ value: 'none', label: TEXTURE_LABELS.none }];
+    G.TEXTURE_NAMES.forEach(function (t) {
+      list.push({ value: t, label: TEXTURE_LABELS[t] || t });
+    });
+    list.push({ value: 'image', label: TEXTURE_LABELS.image });
+    return list;
+  }
+
   function ditherTiles() {
     return Object.keys(DITHER_PRESETS).map(function (k) {
       return { value: k, label: DITHER_PRESETS[k].label,
@@ -318,13 +333,33 @@
         {
           title: 'Texture',
           rows: [
-            { kind: 'note', text: 'This style prints solid inside the edge.', showIf: 'notexture' },
+            { kind: 'select', id: 'texture', label: 'Texture', icon: 'texture',
+              options: textureOptions(),
+              tip: 'The style picks one. Swap it here, or bring an image of your own: ' +
+                   'a scan, a wall, anything, and its light and dark knock the ink out' },
             { kind: 'range', id: 'textureAmount', label: 'Amount', icon: 'texAmt', min: 0, max: 1, step: 0.01,
-              fmt: pct, showIf: 'texture', tip: 'How much of the style’s texture knocks ink out' },
-            { kind: 'button', id: 'ownTexture', label: 'Use an image of yours', icon: 'image',
-              buttonIcon: 'open',
-              tip: 'A scan, a photo of a wall, anything: its light and dark become the texture',
-              action: function () { document.getElementById('textureFile').click(); } }
+              fmt: pct, showIf: 'texture', tip: 'How much of the texture knocks ink out' },
+            { kind: 'range', id: 'textureScale', label: 'Size', icon: 'texScale', min: 0.5, max: 14, step: 0.1,
+              showIf: 'texture', tip: 'Size of the texture grain' },
+            { kind: 'toggle', id: 'textureInvert', label: 'Invert', icon: 'invert',
+              showIf: 'texture', tip: 'Swap which parts of the texture remove ink' }
+          ]
+        },
+        {
+          title: 'More', id: 'ditherMore', collapsed: true,
+          rows: [
+            { kind: 'range', id: 'bias', label: 'Weight', icon: 'weight', min: -6, max: 6, step: 0.1,
+              tip: 'Push the whole outline in or out. Fattens thin lines the erosion is eating' },
+            { kind: 'range', id: 'pit', label: 'Holes', icon: 'pits', min: 0, max: 0.45, step: 0.01,
+              fmt: pct, tip: 'Holes opened up inside the strokes' },
+            { kind: 'range', id: 'blotchAmount', label: 'Patchy', icon: 'patchy', min: 0, max: 1, step: 0.01,
+              fmt: pct, tip: 'How much the erosion varies across the artwork. Zero looks mechanical' },
+            { kind: 'range', id: 'meltRadius', label: 'Melt', icon: 'melt', min: 0, max: 8, step: 0.1,
+              tip: 'Blur the coverage and cut it again: specks dissolve, neighbours fuse, edges soften' },
+            { kind: 'range', id: 'pxPerUnit', label: 'Detail', icon: 'detail', min: 1, max: 4.5, step: 0.1,
+              tip: 'Working resolution. Higher resolves finer grain and costs more paths' },
+            { kind: 'number', id: 'seed', label: 'Seed', icon: 'seed', min: 1, max: 999999, scrub: 1,
+              tip: 'Same seed, same result. Change it to re-roll the randomness' }
           ]
         }
       ];
@@ -371,6 +406,10 @@
               fmt: function (v) { return v.toFixed(1) + 'px'; },
               tip: 'Spacing between dot centres, in artwork pixels. Small is a fine screen ' +
                    'and far more dots. Independent of how big the artwork is' },
+            { kind: 'range', id: 'fill', label: 'Fill', icon: 'inkDrop', min: 0.2, max: 2, step: 0.01,
+              fmt: pct, tip: 'How much of its cell each dot fills. Up closes the gap between ' +
+                   'dots until they touch and fuse; down opens it. Weight does the same for ' +
+                   'the midtones only' },
             { kind: 'range', id: 'gain', label: 'Weight', icon: 'gain', min: -1, max: 1, step: 0.01,
               fmt: pct, tip: 'Heavier or lighter than the picture asks for. Positive fattens ' +
                    'the midtones, the way real paper does' },
@@ -395,6 +434,17 @@
             { kind: 'range', id: 'split', label: 'Split', icon: 'gcr',
               min: 0.1, max: 0.85, step: 0.01, fmt: pct,
               tip: 'Where the dark ink starts. Low and the shadows fill early; high and the second ink carries most of the picture' }
+          ]
+        },
+        {
+          title: 'More', id: 'halftoneMore', collapsed: true,
+          rows: [
+            { kind: 'range', id: 'gcr', label: 'Black plate', icon: 'gcr', min: 0, max: 1, step: 0.01,
+              fmt: pct, showIf: 'cmyk',
+              tip: 'How much of the common grey moves into the black plate. High keeps ' +
+                   'shadows clean; low prints them from the three colours' },
+            { kind: 'number', id: 'seed', label: 'Seed', icon: 'seed', min: 1, max: 999999, scrub: 1,
+              tip: 'Same seed, same grit. Change it to re-roll where the dots drift and fray' }
           ]
         }
       ];

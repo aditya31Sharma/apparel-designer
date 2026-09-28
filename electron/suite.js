@@ -212,7 +212,7 @@ const SCRIPT = `(async function(){
    * hidden: what a style sets, you can see and move. */
   check('halftone styles only set what the panel shows', hn0.every(function (k) {
     return Object.keys(window.HALFTONE_PRESETS[k].params).every(function (key) {
-      return ['mode','pattern','pitch','gain','grit','minDot','angle','ink2','split'].indexOf(key) >= 0;
+      return ['mode','pattern','pitch','fill','gain','grit','minDot','angle','ink2','split','gcr','seed'].indexOf(key) >= 0;
     });
   }));
   function dnames0(){ return Object.keys(window.DITHER_PRESETS); }
@@ -711,6 +711,42 @@ const SCRIPT = `(async function(){
   })();
   Doc.effect(P,'halftone').params.grit = 0;
   await recompute();
+
+  /* Fill closes the gap between dots: the same screen, more ink per cell,
+   * until neighbours touch and fuse. Measured as ink on the page. */
+  Doc.effect(P,'halftone').params.fill = 0.6;
+  await recompute();
+  var inkLow = window.__lastHT ? window.__lastHT.ink : 0;
+  Doc.effect(P,'halftone').params.fill = 1.6;
+  await recompute();
+  var inkHigh = window.__lastHT ? window.__lastHT.ink : 0;
+  check('fill closes the gap between dots', inkHigh > inkLow * 1.5 && inkLow > 0,
+    (inkLow * 100).toFixed(1) + '% ink at 60%, ' + (inkHigh * 100).toFixed(1) + '% at 160%');
+  Doc.effect(P,'halftone').params.fill = 1;
+  await recompute();
+
+  /* The controls that matter less often are folded, not gone. */
+  check('each effect panel folds its extra controls', (function(){
+    return document.querySelectorAll('#panel-halftone .sec.fold').length === 1 &&
+           document.querySelectorAll('#panel-dither .sec.fold').length === 1;
+  })());
+  check('a folded section opens on a click and closes again', (function(){
+    var sec = document.querySelector('#panel-dither .sec.fold');
+    if (!sec) return false;
+    var h = sec.querySelector('h2');
+    if (!sec.classList.contains('closed')) h.click();     // start closed whatever was remembered
+    var rows = sec.querySelector('.pr');
+    var hiddenBefore = getComputedStyle(rows).display === 'none';
+    h.click();
+    var shown = getComputedStyle(rows).display !== 'none';
+    h.click();
+    var hiddenAfter = getComputedStyle(rows).display === 'none';
+    return hiddenBefore && shown && hiddenAfter;
+  })());
+  check('the dither texture is a choice again', (function(){
+    var sel = document.querySelector('#panel-dither select.sel');
+    return !!sel && sel.options.length >= 10;
+  })(), document.querySelector('#panel-dither select.sel') ? document.querySelector('#panel-dither select.sel').options.length + ' options' : 'no select');
 
   window.App.loadMarkup(beforeSvg, 'roundtrip.svg');
   await wait(1200);

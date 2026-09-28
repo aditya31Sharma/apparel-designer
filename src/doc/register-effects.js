@@ -173,15 +173,17 @@
     return {
       frequency: freq,
       pattern: p.pattern || 'round',
-      inkDensity: 1,
+      // Fill scales every dot; Weight bends the midtones. Both close the gap
+      // between dots, and they are different tools for it.
+      inkDensity: p.fill === undefined ? 1 : p.fill,
       dotGain: p.gain || 0,
       roughness: grit * 0.4,
       fuzziness: grit * 0.45,
       paperFibre: grit * 0.45,
       inkTexture: grit * 0.4,
-      gcr: p.mode === 'cmyk' ? 0.9 : 1,
+      gcr: p.mode === 'cmyk' ? (p.gcr === undefined ? 0.9 : p.gcr) : 1,
       minDot: p.minDot === undefined ? 0.05 : p.minDot,
-      seed: 1,
+      seed: p.seed || 1,
       // Thirty degrees apart is what keeps four screens from forming a moire,
       // and yellow sits where the eye forgives it. One number turns them all.
       angles: { k: a, c: a - 30, m: a + 30, y: a - 45 },
@@ -207,6 +209,7 @@
        * it at run time. */
       pitch: 6,
       pattern: 'round',
+      fill: 1,                    // how much of its cell each dot fills; up closes the gap
       gain: 0.3,                  // heavier or lighter than the picture asks for
       /* Zero: a clean arc per dot. Any grit at all turns every dot into a
        * polygon of up to twenty nine points, which is three to four times
@@ -218,6 +221,8 @@
       mode: 'mono',               // mono | duotone | cmyk
       ink2: '#e5352b',            // the second ink, in duotone
       split: 0.45,                // where the dark ink comes in, in duotone
+      gcr: 0.9,                   // black generation, four colour only
+      seed: 1,                    // re-rolls where grit puts each dot
       preset: 'onecolour'         // the defaults are the first tile, and it says so
     },
     run: function (input, p, ctx) {
@@ -244,6 +249,9 @@
       // Dots come back in bitmap pixels; put them back into artwork units.
       var tM = now();
       var k = 1 / px.scale;
+      // Ink on the page as a share of the bitmap, so a harness can see that a
+      // control which is meant to close the gap between dots closed it.
+      var inkArea = 0;
       var plates = res.channels.map(function (ch) {
         var d = ch.dots, out = new Float32Array(d.length);
         for (var q = 0; q < d.length; q += H.STRIDE) {
@@ -251,6 +259,7 @@
           out[q + 1] = px.y + d[q + 1] * k;
           out[q + 2] = d[q + 2] * k;
           out[q + 3] = d[q + 3];
+          inkArea += Math.PI * d[q + 2] * d[q + 2];
         }
         return { key: ch.key, label: ch.label, colour: inkColour(p, ch.key), dots: out };
       });
@@ -266,6 +275,7 @@
         matte: input.matte,
         stats: { dots: res.stats.dots, plates: plates.length,
                  pitch: res.stats.spacing * k,
+                 ink: inkArea / (px.w * px.h),
                  raster: msRaster, screen: msScreen,
                  map: Math.round(now() - tM), bitmap: px.w + 'x' + px.h }
       };

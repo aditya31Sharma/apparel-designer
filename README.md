@@ -40,16 +40,18 @@ Cmd to ignore that.
 ### Halftone
 
 A printing RIP done as geometry, not as a filter. One, two or four inks, six dot
-shapes, real screen angles and real dot gain. Five sliders: dot size, weight,
-grit, smallest dot, angle. Sized by **dot pitch in pixels**, so a screen you
-tuned on a logo behaves the same on a 3000px photo.
+shapes, real screen angles and real dot gain. Six sliders: dot size, fill, weight,
+grit, smallest dot, angle. Fill closes the gap between dots until they touch and
+fuse. Sized by **dot pitch in pixels**, so a screen you tuned on a logo behaves
+the same on a 3000px photo.
 
 ### Dither
 
 Signed distance field ink erosion. Six styles, each a different texture, and
 five sliders under them: threshold, erosion, grain, spatter, spread. The thing
 that makes a print look pulled through a screen rather than printed by a
-machine.
+machine. A folded **More** section in each panel keeps the rest, weight, holes,
+patchiness, melt, detail and seed, for when the five are not enough.
 
 **Pick a style, then move the sliders.** Both panels open with the styles, and
 picking one sets every slider under it, which you are then free to move. There

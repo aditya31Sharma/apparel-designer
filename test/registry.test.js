@@ -67,6 +67,8 @@ console.log('\nparameters that had to change shape');
     ht.roughness === undefined && ht.inkDensity === undefined && ht.angles === undefined);
   var clean = E.get('halftone').engineOptions(ht, 100);
   ok('the default dot is a clean arc', clean.fuzziness === 0 && clean.roughness === 0);
+  ok('fill starts at exactly what the picture asks for', ht.fill === 1 && clean.inkDensity === 1);
+  ok('fill scales the ink', E.get('halftone').engineOptions(Object.assign({}, ht, { fill: 1.6 }), 100).inkDensity === 1.6);
   var eo = E.get('halftone').engineOptions(Object.assign({}, ht, { grit: 0.5 }), 100);
   ok('grit moves every distress knob together',
     eo.roughness > 0 && eo.fuzziness > 0 && eo.paperFibre > 0 && eo.inkTexture > 0);

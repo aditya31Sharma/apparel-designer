@@ -185,6 +185,16 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
  * its inks, so it sits on white the way the print would */
 #panel-halftone .tiles .thumb.paper{background:#f4f4f4}
 
+/* a section folded away until asked for */
+.sec.fold h2{cursor:pointer}
+.sec.fold.closed h2{margin-bottom:0}
+.sec.fold .chev{width:7px;height:7px;flex:none;border-right:1.5px solid var(--muted);
+  border-bottom:1.5px solid var(--muted);transform:rotate(45deg);margin:0 6px 4px 0;
+  transition:transform .12s}
+.sec.fold.closed .chev{transform:rotate(-45deg);margin:0 6px 0 0}
+.sec.fold h2:hover .chev{border-color:var(--ink)}
+.sec.fold.closed > *:not(h2){display:none !important}
+
 /* ---------- a job in flight ---------- */
 .prog{margin:2px 0 6px}
 .prog[hidden]{display:none}

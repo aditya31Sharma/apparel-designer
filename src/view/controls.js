@@ -336,6 +336,22 @@
           });
         }
       }
+      /* Folded away until asked for. The controls that matter less often
+       * are kept rather than cut, behind a heading that opens on a click and
+       * remembers whether it was left open. */
+      if (section.collapsed && section.title) {
+        var h2 = sec.querySelector('h2');
+        var key = 'ad.fold.' + (section.id || section.title);
+        var open = false;
+        try { open = localStorage.getItem(key) === 'open'; } catch (e) { /* no storage */ }
+        sec.classList.add('fold');
+        sec.classList.toggle('closed', !open);
+        h2.insertAdjacentHTML('beforeend', '<span class="grow"></span><span class="chev"></span>');
+        h2.addEventListener('click', function () {
+          var closed = sec.classList.toggle('closed');
+          try { localStorage.setItem(key, closed ? 'closed' : 'open'); } catch (e) { /* no storage */ }
+        });
+      }
       // A whole section can be conditional, so a heading with nothing under it
       // never appears.
       if (section.showIf) sec.dataset.showif = section.showIf;
