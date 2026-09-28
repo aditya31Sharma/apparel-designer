@@ -1,6 +1,6 @@
 {
-  "version": "2.3.1",
+  "version": "2.4.0",
   "minShell": "2.1.0",
-  "tag": "v2.3.1",
-  "notes": "Remove background now shows. The cut was being computed correctly and never drawn, so the picture looked unchanged."
+  "tag": "v2.4.0",
+  "notes": "Simpler panels: one Ink colour and a Canvas colour up top, five halftone sliders, six dither styles, no paper under the artwork, and background removal shows its progress."
 }
