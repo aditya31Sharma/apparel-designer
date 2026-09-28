@@ -7,6 +7,20 @@
  */
 'use strict';
 
+/* Some terminals, VS Code's among them, export ELECTRON_RUN_AS_NODE for their
+ * own child processes. With it set, Electron runs this file as a plain Node
+ * script instead of starting an app: require('electron') hands back the path to
+ * the binary rather than the module, and the window silently never appears.
+ * Say so rather than exiting quietly. */
+if (process.env.ELECTRON_RUN_AS_NODE) {
+  process.stderr.write(
+    'Apparel Designer cannot start while ELECTRON_RUN_AS_NODE is set.\n' +
+    'That variable makes Electron behave as a plain Node runtime.\n' +
+    'Launch it from Finder, or clear the variable first:\n' +
+    '  env -u ELECTRON_RUN_AS_NODE open -a "Apparel Designer"\n');
+  process.exit(1);
+}
+
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');

@@ -197,6 +197,11 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
 .sz.heavy{color:#ffd48a;opacity:1}
 .foot button.pri:hover{background:#2aa5ff}
 
+/* Nothing loaded: the panel stays visible so the shape of the tool is legible,
+ * but it should not look like it is waiting for input it cannot use. */
+body.empty aside .scroll{opacity:.45;pointer-events:none}
+body.empty .foot button{opacity:.45;pointer-events:none}
+
 /* ---------- tooltip ---------- */
 #tip{position:fixed;z-index:50;max-width:250px;background:#000;color:#fff;
   border-radius:6px;padding:7px 9px;font-size:11px;line-height:1.45;

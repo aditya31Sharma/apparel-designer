@@ -72,7 +72,10 @@
         '<span class="grow"></span></div>');
       var num = node.querySelector('.num');
       var fmt = row.fmt || function (v) { return String(Math.round(v * 100) / 100); };
-      function show(v) { if (document.activeElement !== num) num.value = fmt(v); }
+      function show(v) {
+        if (document.activeElement === num) return;
+        num.value = (v === undefined || v === null || v !== v) ? '' : fmt(v);
+      }
       num.addEventListener('change', function () {
         var v = parseFloat(this.value);
         if (isNaN(v)) { show(api.get(row.id)); return; }
@@ -211,11 +214,13 @@
           (ICON.lock || '') + '</button>' : '') + '</div>');
       var ia = node.querySelector('[data-k=a]'), ib = node.querySelector('[data-k=b]');
       var lockBtn = node.querySelector('.lockbtn');
+      // With nothing loaded there is no value to show. Blank, not NaN.
       var fmt = row.fmt || function (v) { return String(Math.round(v * 100) / 100); };
+      var safe = function (v) { return (v === undefined || v === null || v !== v) ? '' : fmt(v); };
 
       function show() {
-        if (document.activeElement !== ia) ia.value = fmt(api.get(row.a.id));
-        if (document.activeElement !== ib) ib.value = fmt(api.get(row.b.id));
+        if (document.activeElement !== ia) ia.value = safe(api.get(row.a.id));
+        if (document.activeElement !== ib) ib.value = safe(api.get(row.b.id));
         if (lockBtn) lockBtn.classList.toggle('on', !!api.get(row.lock));
       }
       function commitField(input, id) {

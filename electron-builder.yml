@@ -1,18 +1,43 @@
 appId: com.tenzen.apparel-designer
 productName: Apparel Designer
 directories:
-  output: build
+  output: dist
+  buildResources: assets
 files:
   - index.html
   - style.css
   - src/**/*
-  - electron/**/*
+  - electron/main.js
+  - electron/preload.js
+  - electron/bgremove.js
+  - electron/bgworker.js
   - "!**/*.map"
+# Background removal runs in a spawned system Node, which cannot read anything
+# inside an asar archive. Its script and the native runtime have to sit on the
+# real filesystem.
+asarUnpack:
+  - electron/bgworker.js
+  # The whole onnxruntime family, not just the node package: it requires
+  # onnxruntime-common at load, and a dependency left inside the archive is
+  # invisible to a plain Node no matter where the parent sits.
+  - node_modules/onnxruntime-node/**
+  - node_modules/onnxruntime-common/**
 mac:
   category: public.app-category.graphics-design
+  icon: assets/icon.icns
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch: [arm64]
   # Unsigned: the first launch needs right-click Open. Notarising means a paid
-  # developer account, which is not worth it for a tool with one user.
+  # Apple developer account, which is not worth it for a tool with one user.
   identity: null
+dmg:
+  title: Apparel Designer
+  contents:
+    - x: 140
+      y: 180
+      type: file
+    - x: 400
+      y: 180
+      type: link
+      path: /Applications

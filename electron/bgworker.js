@@ -87,7 +87,27 @@ async function main() {
   }
 
   note('Loading the background model');
-  const ort = require(path.join(__dirname, '..', 'node_modules', 'onnxruntime-node'));
+  // Unpacked next to this file in a packaged build, in node_modules during
+  // development. Try both rather than guessing which one this is.
+  //
+  // The replace has to skip a path that is already unpacked, or it produces
+  // app.asar.unpacked.unpacked and nothing is found.
+  const here = __dirname.replace(/app\.asar(?!\.unpacked)/, 'app.asar.unpacked');
+  const candidates = [
+    path.join(here, '..', 'node_modules', 'onnxruntime-node'),
+    path.join(here, '..', '..', 'node_modules', 'onnxruntime-node')
+  ];
+  let ort = null, lastErr = null;
+  for (const c of candidates) {
+    try { ort = require(c); break; } catch (e) { lastErr = e; }
+  }
+  // Report why, not just that. The first version of this swallowed the error
+  // and said "not found" when the module was sitting right there and one of
+  // its own dependencies was the thing missing.
+  if (!ort) {
+    throw new Error('could not load onnxruntime-node from ' +
+      candidates.join(' or ') + ': ' + (lastErr && lastErr.message || 'unknown'));
+  }
   const session = await ort.InferenceSession.create(modelPath, {
     executionProviders: ['cpu'],
     graphOptimizationLevel: 'all'

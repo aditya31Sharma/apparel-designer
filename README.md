@@ -14,19 +14,38 @@ Three effects, independent, none applied until you switch one on:
 Around them a proper document: the layer owns its position, size, rotation,
 opacity, fill and stroke, and keeps every one of them no matter which effects run.
 
-## Running it
+## Installing it
 
 ```bash
 npm install
-npm start          # the desktop app
-npm run web        # the same thing as a web page, on :8900
-npm test           # 107 engine checks, no browser needed
-npm run suite      # 370+ checks driving the real desktop build
-npm run bench      # timings for every heavy path
+npm run dist       # builds dist/Apparel Designer-*.dmg
 ```
 
-macOS will warn on first launch because the build is not notarised. Right-click the
-app, choose Open, agree once, and it never asks again.
+Open the dmg and drag the app to Applications. After that it is in Spotlight and
+the Launchpad like anything else, and you can keep it in the dock.
+
+The build is not signed, because notarising needs a paid Apple developer account.
+A copy you built yourself opens normally. One downloaded from somewhere else will
+need a right-click and Open the first time.
+
+**It will not start from a VS Code terminal.** VS Code exports
+`ELECTRON_RUN_AS_NODE`, which makes Electron behave as a plain Node runtime: the
+window never appears and nothing is printed. The app now detects this and says
+so. Launch it from Finder, or clear the variable:
+
+```bash
+env -u ELECTRON_RUN_AS_NODE open -a "Apparel Designer"
+```
+
+## Working on it
+
+```bash
+npm start          # the desktop app, from source
+npm run web        # the same thing as a web page, on :8900
+npm test           # 149 engine checks, no browser needed
+npm run suite      # 377 checks driving the real desktop build
+npm run bench      # timings for every heavy path
+```
 
 ## Halftone
 

@@ -126,7 +126,11 @@ function findNode() {
 
 function runWorker(nodeBin, args, onProgress) {
   return new Promise((resolve, reject) => {
-    const child = spawn(nodeBin, [path.join(__dirname, 'bgworker.js')].concat(args), {
+    // In a packaged build this file lives inside app.asar, which a plain Node
+    // cannot read. The worker is unpacked alongside it.
+    const worker = path.join(__dirname, 'bgworker.js')
+      .replace(/app\.asar(?!\.unpacked)/, 'app.asar.unpacked');
+    const child = spawn(nodeBin, [worker].concat(args), {
       // A stray ELECTRON_RUN_AS_NODE in the environment would send this straight
       // back through Electron's own runtime, which is the thing that crashes.
       env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '' }),

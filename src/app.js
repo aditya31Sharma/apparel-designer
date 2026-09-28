@@ -411,6 +411,9 @@
   function syncPanels() {
     Object.keys(panels).forEach(function (k) { panels[k].sync(); });
     syncChrome();
+    // Controls that act on a layer read as live until there is one.
+    var has = !!Doc.selected(doc);
+    document.body.classList.toggle('empty', !has);
   }
 
   /* ================= loading artwork ================= */
