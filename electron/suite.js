@@ -963,13 +963,23 @@ const SCRIPT = `(async function(){
   check('pinch zooms', vp.view.k > k1);
 
   // frame rate while panning a heavy scene
+  /* A hidden window paints no frames, and this used to wait for them with no
+   * end: a run with the window covered sat here until the twenty minute
+   * limit. Now it gives up after fifteen seconds and reports what it saw,
+   * which fails the check instead of hanging the run. */
   function frames(n, mutate){
     return new Promise(function(resolve){
-      var c=0, prev=0, d=[];
-      function step(t){ if(prev) d.push(t-prev); prev=t;
-        if(c++<n){ mutate(); requestAnimationFrame(step); }
-        else { d.sort(function(a,b){return a-b;}); resolve({median:d[(d.length/2)|0], p95:d[Math.floor(d.length*0.95)]}); } }
+      var c=0, prev=0, d=[], done=false;
+      function finish(){
+        if (done) return; done = true;
+        d.sort(function(a,b){return a-b;});
+        resolve(d.length ? {median:d[(d.length/2)|0], p95:d[Math.floor(d.length*0.95)]}
+                         : {median:Infinity, p95:Infinity, hidden:true});
+      }
+      function step(t){ if(done) return; if(prev) d.push(t-prev); prev=t;
+        if(c++<n){ mutate(); requestAnimationFrame(step); } else finish(); }
       requestAnimationFrame(step);
+      setTimeout(finish, 15000);
     });
   }
   var rr = canvas.getBoundingClientRect();
@@ -977,7 +987,8 @@ const SCRIPT = `(async function(){
   var f = await frames(90, function(){
     canvas.dispatchEvent(new WheelEvent('wheel',{deltaX:16,deltaY:6,ctrlKey:false,bubbles:true,cancelable:true,clientX:rr.left+300,clientY:rr.top+300}));
   });
-  check('pan holds 60fps on a heavy scene', f.p95 < 24, 'p95 ' + f.p95.toFixed(1) + 'ms');
+  check('pan holds 60fps on a heavy scene', f.p95 < 24,
+    f.hidden ? 'no frames at all: the window was hidden' : 'p95 ' + f.p95.toFixed(1) + 'ms');
 
   // ---- memory does not run away ----
   var mem0 = performance.memory ? performance.memory.usedJSHeapSize : 0;
