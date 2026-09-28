@@ -1,53 +1,46 @@
-/* Every font on this machine, and the bytes of any one of them.
+/* Install every font that is sitting on this machine but not installed.
  *
- * The renderer cannot see the filesystem, and Electron does not expose the
- * browser's local font query, so the shell walks the places fonts live and
- * hands back a list: family, style, where it came from, and an id to ask for
- * the file by. The list is built once and cached against each file's size and
- * modification time, so a rescan after the first costs a directory walk.
- *
- * Four places, in the order they are worth showing:
+ * Fonts arrive in two places without being installed:
  *
  *   Adobe Fonts    Creative Cloud syncs them into a hidden folder under
- *                  CoreSync/plugins/livetype, filed by number. The names are
- *                  in entitlements.xml alongside; the OpenType files sit in
- *                  the .t, .w and .r folders. The .e folder holds the same
- *                  fonts in a wrapped form that is not an OpenType file, so
- *                  it is not read.
- *   Downloads      Loose font files, and font files inside zips, which is
- *                  how a bought font arrives. Zips are read in place.
- *   Yours          ~/Library/Fonts, and anything dropped onto the app, which
- *                  is copied into the app's own fonts folder.
- *   System         /Library/Fonts and /System/Library/Fonts, including the
- *                  Supplemental set.
+ *                  CoreSync/plugins/livetype, filed by number. The .t, .w and
+ *                  .r folders hold plain OpenType files; entitlements.xml
+ *                  alongside says what each number is called. The .e folder
+ *                  holds a wrapped form that is not OpenType and is not read.
+ *   Downloads      Loose font files, and font files inside zips, which is how
+ *                  a bought font arrives. Zips are read in place, never
+ *                  unpacked onto the disk.
  *
- * Names come from the font's own name table, read here without any library:
- * the table directory, the name records, the strings. A collection (.ttc)
- * holds several fonts; each is listed on its own and handed out as a file of
- * its own, since the outline parser reads single fonts only.
+ * Installing is what Font Book does for one user: the file goes into
+ * ~/Library/Fonts and every app can use it. A font counts as installed when a
+ * font with the same PostScript name is already in the user or system font
+ * folders, so pressing the button twice installs nothing the second time, and
+ * a pack that ships one face as both .otf and .ttf installs it once, as the
+ * .otf. Nothing already there is ever overwritten.
+ *
+ * Names come from each font's own name table, read here without a library.
+ * What is installed is cached against each file's size and modification time,
+ * so only the first press reads a thousand font files.
  */
 'use strict';
 
-const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const os = require('os');
-const zlib = require('zlib');
 const zip = require('./zip.js');
 
-const FONT_EXT = /\.(ttf|otf|ttc|woff)$/i;
+const FONT_EXT = /\.(ttf|otf|ttc)$/i;     // what macOS installs
 const ZIP_EXT = /\.zip$/i;
-const MAX_FILE = 24 * 1024 * 1024;       // read whole; above this, the head only
+const MAX_FILE = 24 * 1024 * 1024;        // read whole; above this, the head only
 const HEAD = 4 * 1024 * 1024;
-const MAX_ZIP = 80 * 1024 * 1024;        // a font pack, not an archive of a shoot
+const MAX_ZIP = 80 * 1024 * 1024;         // a font pack, not an archive of a shoot
 const MAX_ENTRY = 24 * 1024 * 1024;
 
-/* ---------- the name table ---------- */
+/* ---------- names, from the font itself ---------- */
 
 function u16(b, o) { return b.readUInt16BE(o); }
 function u32(b, o) { return b.readUInt32BE(o); }
 
-/* Table directory of one sfnt whose offset table starts at `base`. */
 function tableDirectory(buf, base) {
   if (base + 12 > buf.length) return {};
   const n = u16(buf, base + 4);
@@ -55,15 +48,14 @@ function tableDirectory(buf, base) {
   for (let i = 0; i < Math.min(n, 512); i++) {
     const p = base + 12 + i * 16;
     if (p + 16 > buf.length) break;
-    const tag = buf.toString('latin1', p, p + 4);
-    out[tag] = { offset: u32(buf, p + 8), length: u32(buf, p + 12) };
+    out[buf.toString('latin1', p, p + 4)] = { offset: u32(buf, p + 8), length: u32(buf, p + 12) };
   }
   return out;
 }
 
-/* The name records that matter: family (1, or the typographic 16), style
- * (2, or 17), full name (4), PostScript name (6). Windows English first,
- * then any Windows or Unicode record, then Macintosh Roman. */
+/* Family (1, or the typographic 16), style (2, or 17), full name (4),
+ * PostScript name (6). Windows English first, then any Windows or Unicode
+ * record, then Macintosh Roman. */
 const WANTED = { 1: 1, 2: 1, 4: 1, 6: 1, 16: 1, 17: 1 };
 
 function parseNameTable(nt) {
@@ -101,126 +93,52 @@ function namesAt(buf, base) {
   return parseNameTable(buf.subarray(t.offset, t.offset + t.length));
 }
 
-/* WOFF wraps the same tables, each one deflated on its own. */
-function namesWoff(buf) {
-  if (buf.length < 44) return null;
-  const n = u16(buf, 12);
-  for (let i = 0; i < Math.min(n, 512); i++) {
-    const p = 44 + i * 20;
-    if (p + 20 > buf.length) break;
-    if (buf.toString('latin1', p, p + 4) !== 'name') continue;
-    const off = u32(buf, p + 4), comp = u32(buf, p + 8), orig = u32(buf, p + 12);
-    if (off + comp > buf.length) return null;
-    const raw = buf.subarray(off, off + comp);
-    try {
-      return parseNameTable(comp < orig ? zlib.inflateSync(raw) : raw);
-    } catch (e) { return null; }
-  }
-  return null;
-}
-
 /* One file may hold one font or, as a collection, several. */
 function namesOf(buf) {
   if (!buf || buf.length < 12) return [];
   const tag = buf.toString('latin1', 0, 4);
   if (tag === 'ttcf') {
-    const n = u32(buf, 8);
     const out = [];
-    for (let i = 0; i < Math.min(n, 64); i++) {
-      const off = u32(buf, 12 + i * 4);
-      const nm = namesAt(buf, off);
-      if (nm) out.push(Object.assign({ index: i }, nm));
+    for (let i = 0; i < Math.min(u32(buf, 8), 64); i++) {
+      const nm = namesAt(buf, u32(buf, 12 + i * 4));
+      if (nm) out.push(nm);
     }
     return out;
   }
-  if (tag === 'wOFF') {
-    const nm = namesWoff(buf);
-    return nm ? [Object.assign({ index: 0 }, nm)] : [];
-  }
-  if (tag === 'OTTO' || tag === 'true' || tag === 'typ1' || u32(buf, 0) === 0x00010000) {
+  if (tag === 'OTTO' || tag === 'true' || u32(buf, 0) === 0x00010000) {
     const nm = namesAt(buf, 0);
-    return nm ? [Object.assign({ index: 0 }, nm)] : [];
+    return nm ? [nm] : [];
   }
   return [];
 }
 
-/* Pull one font out of a collection as a file of its own. The tables keep
- * their bytes; only the directory is rewritten so the offsets point into the
- * new file rather than the old one. */
-function extractFromCollection(buf, index) {
-  if (buf.toString('latin1', 0, 4) !== 'ttcf') return buf;
-  const n = u32(buf, 8);
-  if (!(index >= 0 && index < n)) throw new Error('no font ' + index + ' in this collection');
-  const base = u32(buf, 12 + index * 4);
-  const numTables = u16(buf, base + 4);
-  const head = Buffer.alloc(12 + numTables * 16);
-  buf.copy(head, 0, base, base + 12);
-  let dataOffset = head.length;
-  const chunks = [head];
-  for (let i = 0; i < numTables; i++) {
-    const p = base + 12 + i * 16, q = 12 + i * 16;
-    buf.copy(head, q, p, p + 8);
-    const off = u32(buf, p + 8), len = u32(buf, p + 12);
-    if (off + len > buf.length) throw new Error('collection table runs past the file');
-    head.writeUInt32BE(dataOffset, q + 8);
-    head.writeUInt32BE(len, q + 12);
-    const padded = (len + 3) & ~3;
-    const chunk = Buffer.alloc(padded);
-    buf.copy(chunk, 0, off, off + len);
-    chunks.push(chunk);
-    dataOffset += padded;
+/* What makes two fonts the same font. */
+function keyOf(nm) {
+  return String(nm.postscript || nm.full || '').toLowerCase().replace(/\s+/g, '');
+}
+
+/* ---------- where things are ---------- */
+
+function places(env) {
+  const e = env || {};
+  const home = e.home || os.homedir();
+  return {
+    target: e.target || path.join(home, 'Library/Fonts'),
+    downloads: e.downloads || path.join(home, 'Downloads'),
+    adobe: e.adobe || path.join(home, 'Library/Application Support/Adobe/CoreSync/plugins/livetype'),
+    system: e.system || ['/Library/Fonts', '/System/Library/Fonts']
+  };
+}
+
+async function walk(dir, depth, onFile) {
+  let list;
+  try { list = await fsp.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
+  for (const ent of list) {
+    if (ent.name.startsWith('.')) continue;
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) { if (depth > 0) await walk(full, depth - 1, onFile); }
+    else if (ent.isFile()) await onFile(full, ent.name);
   }
-  return Buffer.concat(chunks);
-}
-
-/* The outline parser reads cmap subtables of formats 0, 4, 12 and 14 and
- * throws on any other, and Apple's system fonts lead with a format 6 table on
- * the Unicode platform, so a Helvetica every app on the machine can use would
- * fail to load. Drop the records it cannot read; the ones it can read are
- * there behind them. The subtables stay where they are, only the record
- * list at the head of the table shrinks, so this is a copy with a few bytes
- * rewritten. Checksums go stale, and nothing that reads the result checks
- * them. */
-const CMAP_OK = { 0: 1, 4: 1, 12: 1, 14: 1 };
-
-function fixCmap(buf) {
-  const t = tableDirectory(buf, 0).cmap;
-  if (!t || t.offset + 4 > buf.length) return buf;
-  const c = t.offset, n = u16(buf, c + 2);
-  const keep = [];
-  for (let i = 0; i < Math.min(n, 64); i++) {
-    const r = c + 4 + i * 8;
-    if (r + 8 > buf.length) break;
-    const off = u32(buf, r + 4);
-    if (c + off + 2 > buf.length) continue;
-    if (CMAP_OK[u16(buf, c + off)]) keep.push(Buffer.from(buf.subarray(r, r + 8)));
-  }
-  if (keep.length === n || !keep.length) return buf;
-  const out = Buffer.from(buf);
-  out.writeUInt16BE(keep.length, c + 2);
-  keep.forEach((rec, i) => rec.copy(out, c + 4 + i * 8));
-  return out;
-}
-
-/* ---------- where fonts live ---------- */
-
-function adobeDir() {
-  return path.join(os.homedir(), 'Library/Application Support/Adobe/CoreSync/plugins/livetype');
-}
-
-function roots(userData) {
-  const home = os.homedir();
-  return [
-    { source: 'downloads', dir: path.join(home, 'Downloads'), depth: 3, zips: true },
-    { source: 'added', dir: path.join(userData, 'fonts'), depth: 1 },
-    { source: 'user', dir: path.join(home, 'Library/Fonts'), depth: 2 },
-    { source: 'system', dir: '/Library/Fonts', depth: 2 },
-    { source: 'system', dir: '/System/Library/Fonts', depth: 2 }
-  ];
-}
-
-function fontId(file, zipEntry, index) {
-  return [file, zipEntry || '', index || 0].join('|');
 }
 
 async function readHead(file, size) {
@@ -233,154 +151,157 @@ async function readHead(file, size) {
   } finally { await fh.close(); }
 }
 
-async function walk(dir, depth, onFile) {
-  let list;
-  try { list = await fsp.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
-  for (const ent of list) {
-    if (ent.name.startsWith('.')) continue;
-    const full = path.join(dir, ent.name);
-    if (ent.isDirectory()) {
-      if (depth > 0) await walk(full, depth - 1, onFile);
-    } else if (ent.isFile()) {
-      await onFile(full, ent.name);
-    }
+/* ---------- what is installed ---------- */
+
+async function installedKeys(userData, P) {
+  const cacheFile = path.join(userData, 'fonts-index.json');
+  let cache = {};
+  try { cache = JSON.parse(await fsp.readFile(cacheFile, 'utf8')).files || {}; } catch (e) { cache = {}; }
+  const files = {};
+  const keys = new Set();
+  for (const dir of [P.target].concat(P.system)) {
+    await walk(dir, 2, async (file, name) => {
+      if (!FONT_EXT.test(name) && !/\.dfont$/i.test(name)) return;
+      let st;
+      try { st = await fsp.stat(file); } catch (e) { return; }
+      const k = file + '|' + st.size + '|' + Math.round(st.mtimeMs);
+      let names = cache[k];
+      if (!names) {
+        try { names = namesOf(await readHead(file, st.size)); } catch (e) { names = []; }
+      }
+      files[k] = names;
+      names.forEach((nm) => { const key = keyOf(nm); if (key) keys.add(key); });
+    });
   }
+  try { await fsp.writeFile(cacheFile, JSON.stringify({ built: Date.now(), files })); } catch (e) { /* read only */ }
+  return keys;
 }
 
-/* Adobe Fonts: names from the entitlements manifest, files by number. */
-async function adobeFonts(cache) {
-  const dir = adobeDir();
-  let xml;
-  try { xml = await fsp.readFile(path.join(dir, '.c', 'entitlements.xml'), 'utf8'); } catch (e) { return []; }
+/* ---------- what is waiting ---------- */
+
+function cleanName(name) {
+  return String(name || '')
+    .replace(/�/g, '')                   // an entry name in a legacy encoding
+    .replace(/[\/\\:\u0000-\u001f]+/g, ' ')
+    .replace(/^\.+/, '')                      // never a hidden file
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* A file name worth keeping: the one the font came with when it reads
+ * cleanly, otherwise the font's own full name. */
+function fileNameFor(original, names, ext) {
+  const base = String(original || '');
+  if (base && base.indexOf('�') < 0 && !base.startsWith('.')) {
+    const c = cleanName(base);
+    if (c && FONT_EXT.test(c)) return c;
+  }
+  return (cleanName(names[0] && names[0].full) || 'Font') + ext;
+}
+
+async function candidates(P) {
   const out = [];
-  const blocks = xml.split('<font>').slice(1);
-  for (const b of blocks) {
+
+  // Adobe Fonts: the manifest says what each number is.
+  let xml = '';
+  try { xml = await fsp.readFile(path.join(P.adobe, '.c', 'entitlements.xml'), 'utf8'); } catch (e) { xml = ''; }
+  for (const block of xml.split('<font>').slice(1)) {
     const pick = (tag) => {
-      const m = new RegExp('<' + tag + '>([^<]*)</' + tag + '>').exec(b);
+      const m = new RegExp('<' + tag + '>([^<]*)</' + tag + '>').exec(block);
       return m ? m[1].trim() : '';
     };
     const id = pick('id');
-    if (!id) continue;
-    let file = null;
+    if (!/^\d+$/.test(id)) continue;
     for (const sub of ['.t', '.w', '.r']) {
-      const cand = path.join(dir, sub, '.' + id + '.otf');
-      try { const st = await fsp.stat(cand); if (st.size > 100) { file = { path: cand, st }; break; } } catch (e) { /* not here */ }
+      let buf;
+      try { buf = await fsp.readFile(path.join(P.adobe, sub, '.' + id + '.otf')); } catch (e) { continue; }
+      const names = namesOf(buf);
+      if (!names.length) break;
+      const full = pick('fullName') || names[0].full;
+      out.push({ source: 'Adobe Fonts', font: full, file: fileNameFor('', [{ full }], '.otf'),
+                 names, bytes: buf });
+      break;
     }
-    if (!file) continue;                       // entitled but not synced yet
-    const family = pick('familyName'), style = pick('variationName') || 'Regular';
-    const full = pick('fullName') || (family + ' ' + style);
-    out.push({
-      id: fontId(file.path, '', 0), family, style, full, source: 'adobe',
-      path: file.path, index: 0, zipEntry: '', mtime: file.st.mtimeMs
-    });
-  }
-  return out;
-}
-
-/* ---------- the index ---------- */
-
-function indexPath(userData) { return path.join(userData, 'fonts-index.json'); }
-
-async function build(userData, force) {
-  let cache = {};
-  if (!force) {
-    try { cache = JSON.parse(await fsp.readFile(indexPath(userData), 'utf8')).files || {}; } catch (e) { cache = {}; }
-  }
-  const files = {};
-  const fonts = [];
-
-  function keep(key, names, source, file, zipEntry, mtime) {
-    files[key] = names;
-    names.forEach((nm) => {
-      fonts.push({
-        id: fontId(file, zipEntry, nm.index), family: nm.family, style: nm.style,
-        full: nm.full, postscript: nm.postscript || '', source, path: file,
-        index: nm.index || 0, zipEntry: zipEntry || '', mtime
-      });
-    });
   }
 
-  for (const root of roots(userData)) {
-    await walk(root.dir, root.depth || 1, async (file, name) => {
-      const isFont = FONT_EXT.test(name), isZip = root.zips && ZIP_EXT.test(name);
-      if (!isFont && !isZip) return;
+  // Downloads: loose, and inside zips.
+  await walk(P.downloads, 3, async (file, base) => {
+    if (FONT_EXT.test(base)) {
       let st;
       try { st = await fsp.stat(file); } catch (e) { return; }
-      if (isFont) {
-        const key = file + '|' + st.size + '|' + Math.round(st.mtimeMs);
-        if (cache[key]) { keep(key, cache[key], root.source, file, '', st.mtimeMs); return; }
-        try {
-          const names = namesOf(await readHead(file, st.size));
-          keep(key, names, root.source, file, '', st.mtimeMs);
-        } catch (e) { /* not a font after all */ }
-        return;
-      }
-      if (st.size > MAX_ZIP) return;
+      if (st.size > MAX_FILE) return;
       let buf;
       try { buf = await fsp.readFile(file); } catch (e) { return; }
-      let list;
-      try { list = zip.entries(buf); } catch (e) { return; }
-      for (const ent of list) {
-        if (ent.dir || !FONT_EXT.test(ent.name) || /(^|\/)__MACOSX\//.test(ent.name)) continue;
-        if (ent.usize > MAX_ENTRY) continue;
-        const key = file + '!' + ent.name + '|' + st.size + '|' + Math.round(st.mtimeMs);
-        if (cache[key]) { keep(key, cache[key], root.source, file, ent.name, st.mtimeMs); continue; }
-        try {
-          keep(key, namesOf(zip.extract(buf, ent)), root.source, file, ent.name, st.mtimeMs);
-        } catch (e) { /* a broken entry is not a font */ }
+      const names = namesOf(buf);
+      if (names.length) {
+        out.push({ source: 'Downloads', font: names[0].full, names, bytes: buf,
+                   file: fileNameFor(base, names, path.extname(base).toLowerCase()) });
       }
-    });
+      return;
+    }
+    if (!ZIP_EXT.test(base)) return;
+    let buf;
+    try {
+      if ((await fsp.stat(file)).size > MAX_ZIP) return;
+      buf = await fsp.readFile(file);
+    } catch (e) { return; }
+    let list;
+    try { list = zip.entries(buf); } catch (e) { return; }
+    for (const ent of list) {
+      if (ent.dir || !FONT_EXT.test(ent.name) || /(^|\/)__MACOSX\//.test(ent.name)) continue;
+      if (ent.usize > MAX_ENTRY) continue;
+      let data;
+      try { data = zip.extract(buf, ent); } catch (e) { continue; }
+      const names = namesOf(data);
+      if (!names.length) continue;
+      const inner = ent.name.split('/').pop();
+      out.push({ source: 'Downloads', font: names[0].full, names, bytes: data,
+                 file: fileNameFor(inner, names, path.extname(inner).toLowerCase()) });
+    }
+  });
+
+  // Adobe first for its clean names, then .otf ahead of its .ttf twin.
+  const rank = (c) => (c.source === 'Adobe Fonts' ? 0 : 1) * 10 + (/\.otf$/i.test(c.file) ? 0 : 1);
+  return out.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map((x) => x.c);
+}
+
+/* ---------- the button ---------- */
+
+async function writeFresh(dir, name, bytes) {
+  const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
+  for (let n = 1; n < 100; n++) {
+    const file = path.join(dir, n === 1 ? name : stem + ' ' + n + ext);
+    try {
+      await fsp.writeFile(file, bytes, { flag: 'wx' });   // never over something already there
+      return file;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
   }
-
-  const adobe = await adobeFonts();
-  const all = adobe.concat(fonts);
-  const index = { built: Date.now(), files, fonts: all };
-  try { await fsp.writeFile(indexPath(userData), JSON.stringify(index)); } catch (e) { /* read only */ }
-  return index;
+  throw new Error('no free file name for ' + name);
 }
 
-let last = null;
-
-async function list(userData, force) {
-  if (!last || force) last = await build(userData, force);
-  return { built: last.built, fonts: last.fonts };
-}
-
-/* The bytes of one font, as a single OpenType file whatever it came out of. */
-async function read(userData, id) {
-  if (!last) last = await build(userData, false);
-  let entry = last.fonts.find((f) => f.id === id);
-  if (!entry) {
-    last = await build(userData, true);
-    entry = last.fonts.find((f) => f.id === id);
+async function install(userData, opts) {
+  const o = opts || {};
+  const P = places(o.env);
+  const keys = await installedKeys(userData, P);
+  const found = await candidates(P);
+  const installed = [], failed = [];
+  let already = 0;
+  if (!o.dryRun) await fsp.mkdir(P.target, { recursive: true });
+  for (const c of found) {
+    const ks = c.names.map(keyOf).filter(Boolean);
+    if (ks.length && ks.every((k) => keys.has(k))) { already++; continue; }
+    try {
+      const file = o.dryRun ? path.join(P.target, c.file) : await writeFresh(P.target, c.file, c.bytes);
+      ks.forEach((k) => keys.add(k));
+      installed.push({ font: c.font, file: path.basename(file), source: c.source });
+    } catch (e) {
+      failed.push({ font: c.font, error: e.message || String(e) });
+    }
   }
-  if (!entry) throw new Error('no such font');
-  let buf = await fsp.readFile(entry.path);
-  if (entry.zipEntry) {
-    const ent = zip.entries(buf).find((e) => e.name === entry.zipEntry);
-    if (!ent) throw new Error('the zip no longer holds that font');
-    buf = zip.extract(buf, ent);
-  }
-  buf = fixCmap(extractFromCollection(buf, entry.index || 0));
-  return { name: entry.full, bytes: buf };
+  return { installed, already, failed, target: P.target, dryRun: !!o.dryRun,
+           found: found.length };
 }
 
-/* A font dropped on the app, kept in the app's own folder so it is there
- * next time. */
-async function add(userData, name, bytes) {
-  const buf = Buffer.from(bytes);
-  const names = namesOf(buf);
-  if (!names.length) throw new Error('that is not a font file this can read');
-  const dir = path.join(userData, 'fonts');
-  await fsp.mkdir(dir, { recursive: true });
-  const safe = String(name || 'font').replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'font';
-  const file = path.join(dir, safe);
-  await fsp.writeFile(file, buf);
-  last = await build(userData, false);
-  return last.fonts.filter((f) => f.path === file);
-}
-
-module.exports = {
-  list, read, add, namesOf, parseNameTable, extractFromCollection, fixCmap,
-  adobeDir, roots, fontId
-};
+module.exports = { install, namesOf, parseNameTable, keyOf, fileNameFor, places };

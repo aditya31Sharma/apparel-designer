@@ -185,18 +185,6 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
  * its inks, so it sits on white the way the print would */
 #panel-halftone .tiles .thumb.paper{background:#f4f4f4}
 
-/* typing: a box that grows, and a font list that runs to hundreds */
-.pr.tall{align-items:flex-start}
-.pr.tall .gi,.pr.tall .lbl{margin-top:3px}
-.ta{flex:1;min-width:0;min-height:46px;max-height:200px;resize:vertical;
-  background:var(--field);border:1px solid transparent;border-radius:4px;padding:4px 6px;
-  color:var(--ink);font:inherit;line-height:1.35}
-.ta:hover{border-color:var(--line2)}
-.ta:focus{border-color:var(--accent);outline:none}
-.fontpick .find{flex:1;width:auto;text-align:left}
-.fontpick .sel{max-width:100%}
-body.mobile .ta{font-size:16px;min-height:60px}
-
 /* a section folded away until asked for */
 .sec.fold h2{cursor:pointer}
 .sec.fold.closed h2{margin-bottom:0}
@@ -250,17 +238,20 @@ body.empty .foot button{opacity:.45;pointer-events:none}
 /* ---------- update notice ---------- */
 /* Bottom left of the canvas, out of the way of the panel and the artwork.
  * It reports; it never blocks. */
-#update{position:absolute;left:14px;bottom:14px;z-index:6;max-width:min(460px,60%);
+#update,#toast{position:absolute;left:14px;bottom:14px;z-index:6;max-width:min(460px,60%);
   display:flex;align-items:center;flex-wrap:wrap;gap:8px;
   padding:9px 10px 9px 12px;border-radius:9px;
   background:#2c2c2ceb;border:1px solid var(--line2);
   box-shadow:0 8px 28px #0000006b;backdrop-filter:blur(8px)}
-#update[hidden]{display:none}
-#update .msg{font-size:11.5px;font-weight:600;color:var(--ink)}
-#update .notes{flex:1 0 100%;order:1;font-size:11px;color:var(--ink2);line-height:1.4}
-#update button{border:1px solid var(--line2);background:var(--panel2);color:var(--ink);
+#update[hidden],#toast[hidden]{display:none}
+#update .msg,#toast .msg{font-size:11.5px;font-weight:600;color:var(--ink)}
+#update .notes,#toast .notes{flex:1 0 100%;order:1;font-size:11px;color:var(--ink2);line-height:1.4}
+/* the font install report sits opposite the update notice, so both fit */
+#toast{left:auto;right:14px}
+#toast.failed .msg{color:#ffb4b4}
+#toast button,#update button{border:1px solid var(--line2);background:var(--panel2);color:var(--ink);
   border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer}
-#update button:hover{background:#464646}
+#update button:hover,#toast button:hover{background:#464646}
 #update button.pri{background:var(--brand);border-color:var(--brand);color:#151515}
 #update button.pri:hover{filter:brightness(1.08)}
 
@@ -378,7 +369,8 @@ body.mobile .foot button{height:46px;border-radius:11px;font-size:14px}
 body.mobile .foot button svg{width:17px;height:17px}
 body.mobile .sz{font-size:11px}
 
-body.mobile #update{left:12px;right:12px;bottom:calc(var(--peek) + 12px);max-width:none}
+body.mobile #update,body.mobile #toast{left:12px;right:12px;bottom:calc(var(--peek) + 12px);max-width:none}
+.tbtn.busy{opacity:.55;cursor:progress}
 
 /* Nothing on a touchscreen hovers, so a tooltip is a thing that appears when
  * you press something and stays in the way after. */

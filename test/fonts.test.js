@@ -1,8 +1,9 @@
-/* The font index's parsers, on real files where the machine has them and on
- * bytes built here where it does not. */
+/* The font installer: names read from real files, zips read in place, and
+ * the install itself run against temporary folders, never the real ones. */
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const zlib = require('zlib');
 const path = require('path');
 const F = require('../electron/fonts.js');
@@ -14,17 +15,10 @@ function ok(name, cond, detail) {
   else { failed++; console.log('  FAIL ' + name + (detail !== undefined ? ' :: ' + detail : '')); }
 }
 
-/* ---------- a name table, built by hand ---------- */
-
-function utf16be(s) {
-  const b = Buffer.from(s, 'utf16le');
-  return b.swap16();
-}
+function utf16be(s) { return Buffer.from(s, 'utf16le').swap16(); }
 
 function nameTable(records) {
-  // records: [{ platform, enc, lang, id, text(Buffer) }]
   const head = Buffer.alloc(6 + records.length * 12);
-  head.writeUInt16BE(0, 0);
   head.writeUInt16BE(records.length, 2);
   head.writeUInt16BE(head.length, 4);
   const strings = [];
@@ -41,83 +35,33 @@ function nameTable(records) {
 
 console.log('\nname table');
 (function () {
-  const nt = nameTable([
+  const n = F.parseNameTable(nameTable([
     { platform: 1, enc: 0, lang: 0, id: 1, text: Buffer.from('MacName', 'latin1') },
     { platform: 3, enc: 1, lang: 0x409, id: 1, text: utf16be('Tenzen Sans') },
     { platform: 3, enc: 1, lang: 0x409, id: 2, text: utf16be('Bold') },
     { platform: 3, enc: 1, lang: 0x409, id: 4, text: utf16be('Tenzen Sans Bold') },
-    { platform: 3, enc: 1, lang: 0x407, id: 1, text: utf16be('German name') }
-  ]);
-  const n = F.parseNameTable(nt);
-  ok('windows english wins over mac roman and other languages', n && n.family === 'Tenzen Sans', JSON.stringify(n));
-  ok('style and full name are read', n && n.style === 'Bold' && n.full === 'Tenzen Sans Bold');
-  const mac = F.parseNameTable(nameTable([
-    { platform: 1, enc: 0, lang: 0, id: 1, text: Buffer.from('OnlyMac', 'latin1') }
+    { platform: 3, enc: 1, lang: 0x409, id: 6, text: utf16be('TenzenSans-Bold') }
   ]));
-  ok('mac roman is enough on its own', mac && mac.family === 'OnlyMac' && mac.style === 'Regular' && mac.full === 'OnlyMac', JSON.stringify(mac));
-  ok('a table with nothing in it is no font', F.parseNameTable(nameTable([])) === null);
+  ok('windows english wins over mac roman', n && n.family === 'Tenzen Sans', JSON.stringify(n));
+  ok('full and postscript names are read', n && n.full === 'Tenzen Sans Bold' && n.postscript === 'TenzenSans-Bold');
+  ok('two fonts are the same font by postscript name', F.keyOf(n) === 'tenzensans-bold');
   ok('garbage is not a font', F.namesOf(Buffer.from('hello world, not a font at all')).length === 0);
 })();
 
-/* ---------- real files, where they are ---------- */
-
 const ARIAL = '/System/Library/Fonts/Supplemental/Arial.ttf';
+const ARIALB = '/System/Library/Fonts/Supplemental/Arial Bold.ttf';
 const HELV = '/System/Library/Fonts/Helvetica.ttc';
 
 console.log('\nreal fonts');
 (function () {
-  if (!fs.existsSync(ARIAL)) { console.log('  (skipped: no Arial.ttf on this machine)'); return; }
-  const buf = fs.readFileSync(ARIAL);
-  const names = F.namesOf(buf);
-  ok('a TrueType file names itself', names.length === 1 && names[0].family === 'Arial', JSON.stringify(names));
-  ok('a single font extracts as itself', F.extractFromCollection(buf, 0) === buf);
-  ok('a fixed cmap is still a font', F.namesOf(F.fixCmap(buf)).length === 1);
-})();
-
-(function () {
-  if (!fs.existsSync(HELV)) { console.log('  (skipped: no Helvetica.ttc on this machine)'); return; }
-  const buf = fs.readFileSync(HELV);
-  const names = F.namesOf(buf);
-  ok('a collection lists every face', names.length >= 2, names.length);
-  ok('faces are told apart', new Set(names.map((n) => n.full)).size === names.length,
-    names.map((n) => n.full).join(', '));
-  const one = F.extractFromCollection(buf, 1);
-  const tag = one.readUInt32BE(0);
-  ok('an extracted face is a single font', tag === 0x00010000 || one.toString('latin1', 0, 4) === 'true' || one.toString('latin1', 0, 4) === 'OTTO');
-  const again = F.namesOf(one);
-  ok('the extracted face keeps its name', again.length === 1 && again[0].full === names[1].full,
-    (again[0] && again[0].full) + ' vs ' + names[1].full);
-  // Every table's bytes must land intact where the new directory says.
-  const numTables = one.readUInt16BE(4);
-  let intact = true;
-  for (let i = 0; i < numTables; i++) {
-    const p = 12 + i * 16;
-    const off = one.readUInt32BE(p + 8), len = one.readUInt32BE(p + 12);
-    if (off + len > one.length) intact = false;
+  if (fs.existsSync(ARIAL)) {
+    const names = F.namesOf(fs.readFileSync(ARIAL));
+    ok('a TrueType file names itself', names.length === 1 && names[0].family === 'Arial', JSON.stringify(names));
   }
-  ok('every table fits inside the extracted file', intact && numTables > 5, numTables + ' tables');
-  const fixed = F.fixCmap(one);
-  const cm = (function () {
-    const n = fixed.readUInt16BE(4);
-    for (let i = 0; i < n; i++) {
-      const p = 12 + i * 16;
-      if (fixed.toString('latin1', p, p + 4) === 'cmap') return fixed.readUInt32BE(p + 8);
-    }
-    return -1;
-  })();
-  let unsupported = 0;
-  if (cm >= 0) {
-    const n = fixed.readUInt16BE(cm + 2);
-    for (let i = 0; i < n; i++) {
-      const off = fixed.readUInt32BE(cm + 4 + i * 8 + 4);
-      const fmt = fixed.readUInt16BE(cm + off);
-      if ([0, 4, 12, 14].indexOf(fmt) < 0) unsupported++;
-    }
+  if (fs.existsSync(HELV)) {
+    const names = F.namesOf(fs.readFileSync(HELV));
+    ok('a collection lists every face', names.length >= 2, names.length);
   }
-  ok('the fixed cmap carries only formats the parser reads', cm >= 0 && unsupported === 0, unsupported + ' unsupported left');
-  let threw = false;
-  try { F.extractFromCollection(buf, 99); } catch (e) { threw = true; }
-  ok('asking for a face that is not there throws', threw);
 })();
 
 /* ---------- zips, built here ---------- */
@@ -133,7 +77,6 @@ function crc32(buf) {
 }
 
 function makeZip(files) {
-  // files: [{ name, data, deflate }]
   const locals = [], centrals = [];
   let offset = 0;
   files.forEach((f) => {
@@ -144,7 +87,7 @@ function makeZip(files) {
     lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0x800, 6);
     lh.writeUInt16LE(method, 8); lh.writeUInt32LE(crc32(f.data), 14);
     lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(f.data.length, 22);
-    lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(0, 28);
+    lh.writeUInt16LE(name.length, 26);
     const ch = Buffer.alloc(46);
     ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6);
     ch.writeUInt16LE(0x800, 8); ch.writeUInt16LE(method, 10); ch.writeUInt32LE(crc32(f.data), 16);
@@ -175,28 +118,94 @@ console.log('\nzip');
   ok('a folder entry is marked as one', list[2].dir === true);
   ok('a stored entry comes back intact', Z.extract(z, list[0]).equals(a));
   ok('a deflated entry comes back intact', Z.extract(z, list[1]).equals(b));
-  ok('names come through as text', list[1].name === 'Pack/Font Bold.otf', list[1].name);
   let threw = false;
   try { Z.entries(Buffer.from('not a zip at all, not even close, really not')); } catch (e) { threw = true; }
   ok('something that is not a zip says so', threw);
+})();
 
-  if (fs.existsSync(ARIAL)) {
-    const arial = fs.readFileSync(ARIAL);
-    const packed = makeZip([{ name: 'Arial/Arial.ttf', data: arial, deflate: true }]);
-    const got = Z.extract(packed, Z.entries(packed)[0]);
-    ok('a real font survives the round trip through a zip', got.equals(arial) && F.namesOf(got)[0].family === 'Arial');
+/* ---------- the install, against temporary folders ---------- */
+
+console.log('\ninstall');
+(async function () {
+  if (!fs.existsSync(ARIAL) || !fs.existsSync(ARIALB)) {
+    console.log('  (skipped: no Arial on this machine)');
+    return finish();
   }
-})();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-fonts-'));
+  const env = {
+    home: root,
+    target: path.join(root, 'Library/Fonts'),
+    downloads: path.join(root, 'Downloads'),
+    adobe: path.join(root, 'livetype'),
+    system: []                                   // nothing counts as installed but the target
+  };
+  const ud = path.join(root, 'userData');
+  fs.mkdirSync(ud, { recursive: true });
+  fs.mkdirSync(path.join(env.downloads, 'Packs'), { recursive: true });
+  fs.mkdirSync(path.join(env.adobe, '.c'), { recursive: true });
+  fs.mkdirSync(path.join(env.adobe, '.t'), { recursive: true });
+  fs.mkdirSync(path.join(env.adobe, '.e'), { recursive: true });
 
-console.log('\nwhere fonts live');
-(function () {
-  const r = F.roots('/tmp/ud');
-  ok('Downloads is searched, with its zips', r.some((x) => x.source === 'downloads' && x.zips && /Downloads$/.test(x.dir)));
-  ok('fonts added to the app have their own folder', r.some((x) => x.source === 'added' && x.dir === path.join('/tmp/ud', 'fonts')));
-  ok('the user and system font folders are searched', r.filter((x) => x.source === 'user' || x.source === 'system').length >= 3);
-  ok('Adobe Fonts live in the hidden livetype folder', /CoreSync\/plugins\/livetype$/.test(F.adobeDir()));
-  ok('font ids tell files, zip entries and faces apart', F.fontId('/a.ttc', '', 2) !== F.fontId('/a.ttc', '', 0) && F.fontId('/p.zip', 'x.otf', 0) !== F.fontId('/p.zip', '', 0));
-})();
+  const arial = fs.readFileSync(ARIAL), bold = fs.readFileSync(ARIALB);
+  // A pack with the same face twice, as .otf and .ttf, plus the junk a Mac zip carries.
+  fs.writeFileSync(path.join(env.downloads, 'Packs', 'arial-pack.zip'), makeZip([
+    { name: 'Arial/Arial.otf', data: arial, deflate: true },
+    { name: 'Arial/Arial.ttf', data: arial, deflate: true },
+    { name: '__MACOSX/Arial/._Arial.ttf', data: Buffer.from('resource fork') },
+    { name: 'Arial/readme.txt', data: Buffer.from('thanks for buying') }
+  ]));
+  // Adobe Fonts: the manifest names the number, the file is hidden.
+  fs.writeFileSync(path.join(env.adobe, '.c', 'entitlements.xml'),
+    '<typekitSyncState><fonts type="array"><font><id>7</id><properties>' +
+    '<fullName>Test Sans Bold</fullName><familyName>Test Sans</familyName>' +
+    '</properties></font><font><id>8</id><properties><fullName>Not Synced</fullName>' +
+    '</properties></font></fonts></typekitSyncState>');
+  fs.writeFileSync(path.join(env.adobe, '.t', '.7.otf'), bold);
+  fs.writeFileSync(path.join(env.adobe, '.e', '.7'), Buffer.from('wrapped, not a font'));
+  // The same bold face loose in Downloads: one font, however many copies.
+  fs.writeFileSync(path.join(env.downloads, 'Arial Bold.ttf'), bold);
 
-console.log('\nfonts: ' + passed + ' passed, ' + failed + ' failed');
-if (failed) process.exit(1);
+  const dry = await F.install(ud, { env, dryRun: true });
+  ok('a dry run writes nothing', dry.dryRun && !fs.existsSync(env.target), JSON.stringify(dry.installed));
+  ok('a dry run says what it would install', dry.installed.length === 2, dry.installed.map((f) => f.file).join(', '));
+
+  const first = await F.install(ud, { env });
+  const files = fs.readdirSync(env.target).sort();
+  ok('each font installs once, however many copies there are', first.installed.length === 2 && files.length === 2,
+    files.join(', '));
+  ok('an Adobe font gets its real name, not its hidden number',
+    files.indexOf('Test Sans Bold.otf') >= 0 && files.every((f) => !f.startsWith('.')), files.join(', '));
+  ok('the .otf of a pair is the one installed', files.indexOf('Arial.otf') >= 0 && files.indexOf('Arial.ttf') < 0,
+    files.join(', '));
+  ok('zip junk and the wrapped Adobe form are ignored', first.failed.length === 0 && first.found === 4,
+    'found ' + first.found);
+  ok('installed bytes are the font', fs.readFileSync(path.join(env.target, 'Arial.otf')).equals(arial));
+
+  const second = await F.install(ud, { env });
+  ok('pressing it again installs nothing', second.installed.length === 0 && second.already === 4,
+    JSON.stringify({ installed: second.installed.length, already: second.already }));
+  ok('and nothing was written twice', fs.readdirSync(env.target).length === 2);
+
+  // A different font under a file name that is taken: kept apart, never overwritten.
+  fs.writeFileSync(path.join(env.target, 'Clash.ttf'), bold);
+  fs.writeFileSync(path.join(env.downloads, 'Clash.ttf'), arial);
+  fs.unlinkSync(path.join(env.target, 'Arial.otf'));
+  const third = await F.install(ud, { env });
+  ok('a taken file name is never overwritten',
+    fs.readFileSync(path.join(env.target, 'Clash.ttf')).equals(bold) &&
+    third.installed.length === 1 && fs.existsSync(path.join(env.target, third.installed[0].file)),
+    JSON.stringify(third.installed));
+
+  const sys = F.places({ home: '/Users/x' });
+  ok('the real target is the user Fonts folder', sys.target === '/Users/x/Library/Fonts');
+  ok('Adobe Fonts are read from the hidden livetype folder', /CoreSync\/plugins\/livetype$/.test(sys.adobe));
+  ok('system fonts count as installed', sys.system.indexOf('/System/Library/Fonts') >= 0);
+
+  fs.rmSync(root, { recursive: true, force: true });
+  finish();
+})().catch((e) => { failed++; console.log('  FAIL install threw :: ' + (e.stack || e)); finish(); });
+
+function finish() {
+  console.log('\nfonts: ' + passed + ' passed, ' + failed + ' failed');
+  if (failed) process.exitCode = 1;
+}

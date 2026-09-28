@@ -20,10 +20,6 @@
     return '<span class="gi">' + (ICON[name] || '') + '</span>';
   }
 
-  function esc(v) {
-    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  }
-
   function tipAttr(row) {
     if (!row.tip) return '';
     // A pair row names its two fields rather than itself, so fall back to those.
@@ -212,68 +208,6 @@
         btn.disabled = v === 'busy';
       }
       return { node: node, show: show };
-    },
-
-    /* Several lines of text. Live on every keystroke, committed on blur. */
-    textarea: function (row, api) {
-      var node = el(
-        '<div class="pr tall"' + tipAttr(row) + '>' + icon(row.icon) +
-        '<span class="lbl">' + row.label + '</span>' +
-        '<textarea class="ta" rows="2" spellcheck="false"></textarea></div>');
-      var ta = node.querySelector('textarea');
-      function show(v) {
-        if (document.activeElement === ta) return;
-        ta.value = (v === undefined || v === null) ? '' : String(v);
-      }
-      ta.addEventListener('input', function () { api.set(row.id, ta.value, true); });
-      ta.addEventListener('change', function () { api.set(row.id, ta.value); api.commit(row.id); });
-      return { node: node, show: show };
-    },
-
-    /* A font from the machine: a list grouped by where each one came from,
-     * with a box above it to narrow a list that runs to a thousand. */
-    fontpick: function (row, api) {
-      var node = el(
-        '<div class="fontpick">' +
-        '<div class="pr"' + tipAttr(row) + '>' + icon(row.icon) +
-        '<span class="lbl">' + row.label + '</span><select class="sel"></select></div>' +
-        '<div class="pr" data-tip="Find|Type part of a name to shorten the list">' +
-        '<span class="gi"></span><span class="lbl">Find</span>' +
-        '<input class="num wide find" type="text" placeholder="any part of a name" spellcheck="false">' +
-        '<button class="tbtn rescan" data-tip="Rescan|Look again at Adobe Fonts, Downloads and the font folders">' +
-        (ICON.redo || '') + '</button></div></div>');
-      var sel = node.querySelector('select'), find = node.querySelector('.find');
-      var current = '';
-      function paint() {
-        var q = find.value.trim().toLowerCase();
-        var items = (typeof row.items === 'function' ? row.items() : row.items) || [];
-        var groups = {}, order = [];
-        items.forEach(function (it) {
-          if (q && it.label.toLowerCase().indexOf(q) < 0 && it.value !== current) return;
-          if (!groups[it.group]) { groups[it.group] = []; order.push(it.group); }
-          groups[it.group].push(it);
-        });
-        sel.innerHTML = order.map(function (g) {
-          return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (it) {
-            return '<option value="' + esc(it.value) + '">' + esc(it.label) + '</option>';
-          }).join('') + '</optgroup>';
-        }).join('') || '<option value="">No fonts found yet</option>';
-        sel.value = current;
-      }
-      function show(v) {
-        current = v || '';
-        if (sel.value !== current) paint();
-      }
-      sel.addEventListener('change', function () {
-        current = sel.value;
-        api.set(row.id, sel.value); api.commit(row.id);
-      });
-      find.addEventListener('input', paint);
-      node.querySelector('.rescan').addEventListener('click', function () {
-        if (row.rescan) row.rescan(paint);
-      });
-      paint();
-      return { node: node, show: show, repaint: paint };
     },
 
     /* A job in flight: what it is doing, how far along, and how long is left.

@@ -15,8 +15,8 @@
     data-tip="Open|An SVG, or a photo to screen. Cmd O"></button>
   <button class="tbtn" id="pasteBtn" data-icon="paste"
     data-tip="Paste|SVG markup or an image from the clipboard. Cmd V works anywhere"></button>
-  <button class="tbtn" id="type" data-icon="type"
-    data-tip="Type|Text, in any font on this machine. Cmd T"></button>
+  <button class="tbtn" id="installFonts" data-icon="fonts"
+    data-tip="Install fonts|Every font in Adobe Fonts and Downloads, zipped or not, that is not installed yet goes into your Fonts folder for every app"></button>
 
   <span class="sep"></span>
 
@@ -55,12 +55,11 @@
   <div id="stage">
     <canvas id="canvas"></canvas>
     <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div id="drop">Drop an SVG, an image, or a font</div>
+    <div id="drop">Drop an SVG or an image</div>
     <div id="empty">
       <div class="big"></div>
       <h1>Nothing loaded</h1>
-      <p>Open an SVG or drop one on the canvas. Photos work too, and so does typing:
-          every font on this machine is in the Type tool. Nothing is applied
+      <p>Open an SVG or drop one on the canvas. Photos work too. Nothing is applied
           until you switch it on.</p>
       <div class="hint">
         <span><b>Two fingers</b> pan</span>
@@ -70,6 +69,7 @@
     </div>
     <div class="err" id="err"></div>
     <div id="update" hidden></div>
+    <div id="toast" hidden></div>
   </div>
 
   <aside>
@@ -110,14 +110,11 @@
 
 <button id="removeBg" hidden></button>
 <input type="file" id="file" hidden
-  accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,image/avif,.ttf,.otf,.ttc,.woff">
+  accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,image/avif">
 <input type="file" id="textureFile" hidden accept="image/png,image/jpeg,image/webp">
 <div id="tip"></div>
 
 <script src="src/view/icons.js"></script>
-<script src="src/vendor/opentype.min.js"></script>
-<script src="src/engine/text.js"></script>
-<script src="src/engine/fontlib.js"></script>
 <script src="src/engine/warp.js"></script>
 <script src="src/engine/grunge.js"></script>
 <script src="src/engine/halftone.js"></script>
@@ -136,6 +133,7 @@
 <script src="src/view/chrome.js"></script>
 <script src="src/view/mobile.js"></script>
 <script src="src/view/updater.js"></script>
+<script src="src/view/fontsync.js"></script>
 <script src="src/app.js"></script>
 </body>
 </html>

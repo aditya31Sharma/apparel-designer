@@ -7,7 +7,7 @@
       d + (extra || '') + '</svg>';
   };
   root.ICON = {
-    type: P('<path d="M3.5 4.5V3h9v1.5M8 3v10M6 13h4"/>'),
+    fonts: P('<path d="M1.8 13L5 3.5h1L9.2 13M2.9 10h5.2M13.9 8v5M13.9 10.6a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0z"/>'),
     /* The app's own logo: three panels falling away in perspective. Drawn
      * solid, because at eighteen pixels an outline of this is mud. */
     brand:   P('<path d="M3.3 5.4 9.6 2.8v10.4L3.3 10.6z" fill="currentColor" stroke="none"/>' +

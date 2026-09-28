@@ -79,18 +79,14 @@ canvas, which is a print on a black tee, and both are one swatch away from
 anything else. **Invert** prints the light parts of a photograph instead of the
 dark, which is what a light ink on a dark garment wants.
 
-<img src="docs/media/type.png" width="260" align="right" alt="">
+### Install fonts
 
-### Type
-
-Press the T, or Cmd T, and type. Every font on this machine is in the list:
-Adobe Fonts synced by Creative Cloud, straight out of their hidden folder; the
-fonts sitting in Downloads, zipped or not; the ones in your font folder; and the
-system's. Pick one, set the size, tracking, line height and alignment, and the
-words become outlines, the same kind of thing an SVG gives, so the warp bends
-them, the dither chews them and the halftone screens them. Drop a font file on
-the canvas to add one. The file leaves as paths, so it opens anywhere without
-the font.
+One button on the toolbar. It finds every font on this Mac that is not
+installed yet, the Adobe Fonts Creative Cloud keeps in a hidden folder and the
+fonts sitting in Downloads, zipped or not, and puts them in your Fonts folder,
+where every app can use them. Anything already installed is left alone, a
+font that comes as both .otf and .ttf goes in once, and nothing is ever
+overwritten.
 
 ### Background removal
 
@@ -294,17 +290,13 @@ mono with a tint.
 <details>
 <summary><b>Fonts</b></summary>
 
-The shell walks `~/Library/Fonts`, `/Library/Fonts`, `/System/Library/Fonts`,
-`~/Downloads` (three levels deep, reading inside zips) and Creative Cloud's
-`CoreSync/plugins/livetype` folder, where Adobe Fonts sit filed by number with
-their names in `entitlements.xml`. Names are read straight from each font's
-`name` table, no library, and cached against size and modification time, so a
-rescan after the first is a directory walk. A collection (`.ttc`) is listed as
-its faces and each is handed out as a single font file, since the outline
-parser reads single fonts only; the cmap subtable formats it cannot read are
-dropped from that file so Apple's system faces load. Outlines come from
-opentype.js, vendored under `src/vendor` (MIT). About one in sixty of Apple's
-decorative faces still will not parse, and the panel says so when one is picked.
+Creative Cloud keeps Adobe Fonts in `CoreSync/plugins/livetype` under
+Application Support, filed by number: plain OpenType files in `.t`, `.w` and
+`.r`, named in `.c/entitlements.xml`. Downloads is read three folders deep and
+zips are read in place. A font counts as installed when its PostScript name,
+read from its own `name` table, matches one in `~/Library/Fonts`,
+`/Library/Fonts` or `/System/Library/Fonts`; that list is cached against each
+file's size and modification time.
 
 </details>
 
