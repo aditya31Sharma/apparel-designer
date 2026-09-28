@@ -1,6 +1,6 @@
 {
-  "version": "2.1.3",
+  "version": "2.2.0",
   "minShell": "2.1.0",
-  "tag": "v2.1.3",
-  "notes": "Importing a photo no longer switches the halftone on for you. It arrives as the photo, and the first thing that happens to it is the thing you ask for."
+  "tag": "v2.2.0",
+  "notes": "Three recommended styles at the top of the Dither and Halftone panels, starting with One colour. And a Threshold control, because the old fixed one turned dark photos into a solid blob and no style could fix it."
 }
