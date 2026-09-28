@@ -1,6 +1,6 @@
 {
-  "version": "2.4.0",
+  "version": "2.5.0",
   "minShell": "2.1.0",
-  "tag": "v2.4.0",
-  "notes": "Simpler panels: one Ink colour and a Canvas colour up top, five halftone sliders, six dither styles, no paper under the artwork, and background removal shows its progress."
+  "tag": "v2.5.0",
+  "notes": "A Fill slider closes the gap between halftone dots until they fuse. A folded More section in each panel brings back weight, holes, patchiness, melt, detail, black plate and seed, and the dither texture is a choice again."
 }
