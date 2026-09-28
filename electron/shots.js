@@ -36,8 +36,19 @@ const DRIVE = `(async function(step){
 
   var Doc = window.Doc;
   var L = window.App.selected();
-  // Each shot names its own subject; only reload when it is a different one.
-  if (!L || L.name !== step.file) L = await loadFile(step.file, step.type);
+  if (step.text) {
+    // Type, in a face picked by family name from whatever this machine has,
+    // so the shot does not depend on a path.
+    var entries = await window.App.fonts().list(false);
+    var face = entries.filter(function (e) {
+      return e.family === step.family && /bold|black|heavy/i.test(e.style);
+    })[0] || entries.filter(function (e) { return e.family === step.family; })[0];
+    L = await window.App.loadText({ text: step.text, font: face ? face.id : '' });
+    await wait(800);
+  } else if (!L || L.name !== step.file) {
+    // Each shot names its own subject; only reload when it is a different one.
+    L = await loadFile(step.file, step.type);
+  }
   if (!L) return { error: 'nothing loaded' };
 
   L.effects.forEach(function(e){ e.on = false; });
@@ -151,6 +162,12 @@ const SHOTS = [
                             corners: [{ x: 0.08, y: 0.02 }, { x: 0.95, y: 0.14 },
                                       { x: 0.90, y: 0.98 }, { x: 0.02, y: 0.86 }] } },
                 SUBJECT, PRINT, { art: true, square: true, handles: true }),
+
+  // Type: a display face off this machine, chewed by the dither, on the
+  // light canvas in black ink like the other tiles.
+  Object.assign({ name: 'type', text: 'TENZEN\nANGELS', family: 'Gilroy',
+                  effect: 'dither', tool: 'dither', preset: 'screenprint',
+                  art: true }, PRINT),
 
   Object.assign({ name: 'update-notice', effect: 'halftone', tool: 'halftone', art: true,
                   notice: { state: 'ready', version: '2.2.0',

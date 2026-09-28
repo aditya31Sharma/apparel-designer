@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld('desktop', {
   backgroundStatus: () => ipcRenderer.invoke('bg:status'),
   onBackgroundProgress: (fn) => ipcRenderer.on('bg:progress', (_e, stage) => fn(stage)),
 
+  /* Fonts. The list is every font on the machine; the bytes come one font at
+   * a time, as a single OpenType file whatever it was packed in. */
+  listFonts: (force) => ipcRenderer.invoke('fonts:list', force),
+  readFont: (id) => ipcRenderer.invoke('fonts:read', id),
+  addFont: (name, bytes) => ipcRenderer.invoke('fonts:add', name, bytes),
+
   onMenu: (name, fn) => { menuHandlers[name] = fn; },
 
   /* Updating. The page tells the main process it managed to start, which is

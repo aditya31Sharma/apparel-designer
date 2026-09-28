@@ -37,7 +37,8 @@ const tag = 'v' + version;
  * electron-builder packages, and the two lists have to agree. */
 const SHELL_FILES = [
   'electron/main.js', 'electron/preload.js',
-  'electron/bgremove.js', 'electron/bgworker.js', 'electron/update.js'
+  'electron/bgremove.js', 'electron/bgworker.js', 'electron/update.js',
+  'electron/fonts.js', 'electron/zip.js'
 ];
 
 const since = manifest.tag || 'HEAD';

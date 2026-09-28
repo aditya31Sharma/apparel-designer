@@ -294,6 +294,36 @@ ipcMain.handle('bg:remove', async (_e, payload) => {
   }
 });
 
+/* ---------- fonts ---------- */
+
+ipcMain.handle('fonts:list', async (_e, force) => {
+  try {
+    return await require('./fonts.js').list(app.getPath('userData'), !!force);
+  } catch (err) {
+    return { error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('fonts:read', async (_e, id) => {
+  try {
+    const r = await require('./fonts.js').read(app.getPath('userData'), String(id || ''));
+    return { name: r.name,
+             bytes: r.bytes.buffer.slice(r.bytes.byteOffset, r.bytes.byteOffset + r.bytes.byteLength) };
+  } catch (err) {
+    return { error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('fonts:add', async (_e, name, bytes) => {
+  try {
+    const fonts = await require('./fonts.js').add(app.getPath('userData'),
+      String(name || 'font'), Buffer.from(bytes));
+    return { fonts: fonts };
+  } catch (err) {
+    return { error: err.message || String(err) };
+  }
+});
+
 ipcMain.handle('bg:status', async () => {
   try {
     const { modelStatus } = require('./bgremove.js');

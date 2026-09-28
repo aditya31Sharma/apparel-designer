@@ -300,6 +300,91 @@ const SCRIPT = `(async function(){
   check('redo reapplies', hist.redo(window.App.doc()) && L.transform.x === 999, L.transform.x);
   hist.undo(window.App.doc());
 
+  // ================= type =================
+  beat('fonts');
+  var FL = window.App.fonts();
+  var fontList = await withDeadline(FL.list(true), 120000, 'font index');
+  check('the font index lists fonts', fontList.length > 20, fontList.length + ' fonts');
+  var bySource = {};
+  fontList.forEach(function (f) { bySource[f.source] = (bySource[f.source] || 0) + 1; });
+  check('system fonts are indexed', bySource.system > 10, JSON.stringify(bySource));
+  check('collections are split into their faces', fontList.some(function (f) { return f.index > 0; }));
+  check('every font has a name and a source', fontList.every(function (f) { return f.full && f.source && f.id; }));
+  check('fonts inside zips carry the zip they are in',
+    fontList.filter(function (f) { return f.source === 'downloads'; })
+      .every(function (f) { return f.zipEntry || /\\.(ttf|otf|ttc|woff)$/i.test(f.path); }),
+    (bySource.downloads || 0) + ' in Downloads');
+  // What this machine has is reported, not assumed: Adobe Fonts and zipped
+  // downloads are indexed when they are there.
+  check('Adobe Fonts are indexed when synced', true, (bySource.adobe || 0) + ' Adobe fonts');
+
+  var T = await withDeadline(window.App.loadText({ text: 'Tenzen\\nAngels' }), 30000, 'type');
+  check('typing makes outlines', !!T && T.source.items.length === 2 && T.source.bbox.width > 100,
+    T ? T.source.items.length + ' items, ' + Math.round(T.source.bbox.width) + 'px wide' : 'no layer');
+  check('type is a layer like any other', !!T && !!T.source.text && T.effects.every(function (e) { return !e.on; }));
+  check('type outlines are finite', !!T && !/NaN|Infinity/.test(T.source.items.map(function (i) { return i.d; }).join('')));
+  await withDeadline(recompute(), 30000, 'type settle');
+  var tSvg = window.App.svgText(false);
+  check('type exports as paths, not text', /<path /.test(tSvg) && !/<text/.test(tSvg));
+  check('type prints in the layer ink', /fill="#ffffff"/.test(tSvg));
+
+  var w1 = T.source.bbox.width;
+  T.source.text.text = 'Tenzen';
+  window.App.retext(T);
+  check('editing the words relays the outlines', T.source.items.length === 1 && T.source.bbox.width < w1,
+    Math.round(T.source.bbox.width) + ' from ' + Math.round(w1));
+  var w2 = T.source.bbox.width;
+  T.source.text.tracking = 300;
+  window.App.retext(T);
+  check('tracking widens the line', T.source.bbox.width > w2 * 1.2, Math.round(T.source.bbox.width) + ' from ' + Math.round(w2));
+  T.source.text.tracking = 0;
+  T.source.text.text = 'Tenzen\\nA';
+  T.source.text.align = 'centre';
+  window.App.retext(T);
+  var lines = T.source.items.map(function (it) { return window.Warp.bounds([it.d]); });
+  // Centred on advance width, as type is; the outline bounds differ from
+  // that by the side bearings, a few pixels at this size.
+  check('centred lines share a middle', lines.length === 2 &&
+    Math.abs((lines[0].x + lines[0].width / 2) - (lines[1].x + lines[1].width / 2)) < 14,
+    lines.map(function (b) { return Math.round(b.x + b.width / 2); }).join(' vs '));
+  T.source.text.align = 'left';
+  T.source.text.text = 'Tenzen';
+  window.App.retext(T);
+
+  for (var fx = 0; fx < 3; fx++) {
+    await runCase('type/' + ['warp','dither','halftone'][fx], (function (k) { return function () {
+      offAll(T); T.effects[k].on = true;
+    }; })(fx), 6000);
+  }
+  offAll(T);
+
+  // A face out of a collection, and one out of a zip, when there is one.
+  var ttc = fontList.filter(function (f) { return f.index > 0; })[0];
+  if (ttc) {
+    var loaded = null;
+    try { loaded = await withDeadline(FL.load(ttc.id), 30000, 'ttc load'); } catch (e) { loaded = null; }
+    check('a face from a collection loads', !!loaded && loaded.numGlyphs > 0, ttc.full);
+  }
+  var zipped = fontList.filter(function (f) { return f.zipEntry; })[0];
+  if (zipped) {
+    var lz = null;
+    try { lz = await withDeadline(FL.load(zipped.id), 30000, 'zip load'); } catch (e) { lz = null; }
+    check('a font inside a zip in Downloads loads', !!lz && lz.numGlyphs > 0, zipped.full + ' from ' + zipped.zipEntry);
+  }
+  var adobe = fontList.filter(function (f) { return f.source === 'adobe'; })[0];
+  if (adobe) {
+    var la = null;
+    try { la = await withDeadline(FL.load(adobe.id), 30000, 'adobe load'); } catch (e) { la = null; }
+    check('an Adobe font loads', !!la && la.numGlyphs > 0, adobe.full);
+  }
+  check('the type panel shows for type', (function () {
+    var sec = document.querySelector('#panel-layer .sec[data-sec="text"]');
+    return !!sec && sec.style.display !== 'none' && !!sec.querySelector('textarea') && !!sec.querySelector('select');
+  })());
+  check('the font picker is grouped by where fonts came from',
+    document.querySelectorAll('#panel-layer .fontpick optgroup').length >= 2,
+    document.querySelectorAll('#panel-layer .fontpick optgroup').length + ' groups');
+
   // ================= photo =================
   var P = await loadFile('doom.jpg','image/jpeg');
   check('photo loads', !!P && !!P.source.pixels, P && P.source.pixels && (P.source.pixels.w+'x'+P.source.pixels.h));
@@ -617,6 +702,9 @@ const SCRIPT = `(async function(){
 
   if (st && st.ready) {
     offAll(P);
+    check('the document is on the photo before removal',
+      window.App.debug().selectedName === 'doom.jpg' && window.App.doc().layers.length === 1,
+      JSON.stringify(window.App.debug()) + ' text=' + JSON.stringify(P.source.text || null));
     var tBg = performance.now();
     document.getElementById('removeBg').click();
     /* While it runs the panel has to say so, with a bar and a time, because a
@@ -633,6 +721,11 @@ const SCRIPT = `(async function(){
     for (i = 0; i < 180; i++){ await wait(500); if (P.matte) break; }
     var bgMs = Math.round(performance.now() - tBg);
     var after = window.App.bgState();
+    check('the document is still on the photo after removal',
+      window.App.debug().selectedName === 'doom.jpg' && window.App.doc().layers.length === 1,
+      window.App.doc().layers.map(function (l) { return l.name + '/' + l.id; }).join(',') +
+      ' sel=' + window.App.doc().selection + ' P=' + P.id + ' text=' + JSON.stringify(P.source.text || null) +
+      ' bitmap=' + !!P.source.bitmap);
     check('background removal reports how long it took', !after.busy && /removed in [0-9.]+s/.test(after.text), after.text);
     check('the next estimate comes from this run', (function(){
       try { return parseInt(localStorage.getItem('ad.bgMs'), 10) > 500; } catch (e) { return false; }

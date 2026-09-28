@@ -510,6 +510,23 @@
         }
         if (id === 'lockRatio') { L.lockRatio = v; overlay.lockRatio = v; return; }
         if (id === 'invert') { setInvert(L, v); return; }
+        if (id.indexOf('source.text.') === 0) {
+          // Only type has text to edit. Writing into a photo or an SVG would
+          // build a half-made text object on it and mislabel it as type.
+          if (!L.source.text) return;
+          writePath(L, id, v);
+          // A new font has to be fetched and parsed before it can be set in.
+          if (id === 'source.text.font') {
+            window.FontLib.load(v).then(function () {
+              retext(L, false); syncPanels();
+            }).catch(function (e) {
+              fail('That font could not be read: ' + (e.message || e));
+            });
+            return;
+          }
+          retext(L, live);
+          return;
+        }
         writePath(scope === 'layer' ? L : Doc.effect(L, scope).params, id, v);
         if (scope !== 'layer') { onParamChanged(scope, id, v); markDirty(live); return; }
         if (id.indexOf('paint.') === 0) {
@@ -579,6 +596,7 @@
     // The tone controls only mean anything when there is a photo to threshold.
     if (cond === 'photo') return !!L.source.pixels;
     if (cond === 'vector') return !L.source.pixels;
+    if (cond === 'text') return !!L.source.text;
     return true;
   }
 
@@ -728,6 +746,94 @@
     }
   }
 
+  /* ---------- type ---------- */
+
+  /* The words changed, or the font, the size, the tracking: lay the text out
+   * again and let the frame take the new size. Position and rotation stay,
+   * and so does every effect, since they run inside the frame. */
+  function retext(L, live) {
+    var t = L.source.text;
+    if (!t) return;
+    var font = window.FontLib.get(t.font);
+    if (!font) return;
+    var items = window.Text.layout(font, t);
+    var bbox = items.length ? W.bounds(items.map(function (i) { return i.d; })) : null;
+    // Nothing to draw, which is what an empty box is: keep the last outlines
+    // on the canvas until there is something to replace them with.
+    if (!bbox || !bbox.width || !bbox.height) return;
+    L.source.items = items;
+    L.source.bbox = bbox;
+    L.transform.width = bbox.width;
+    L.transform.height = bbox.height;
+    L.name = textName(t.text);
+    $('srcName').textContent = L.name + '  ·  ' +
+      Math.round(bbox.width) + ' x ' + Math.round(bbox.height) + ' px';
+    markDirty(live);
+  }
+
+  function textName(text) {
+    var one = String(text || '').replace(/\s+/g, ' ').trim();
+    return one.slice(0, 24) || 'text';
+  }
+
+  /* A text layer. The font comes from the machine's list, parsed once; the
+   * outlines it gives are a source like any SVG, so everything downstream
+   * treats type as artwork. */
+  function loadText(spec) {
+    var t = Object.assign({}, window.Text.DEFAULT, spec || {});
+    var FL = window.FontLib;
+    return FL.list(false).then(function (entries) {
+      if (!t.font) {
+        var pick = FL.pickDefault(entries);
+        if (!pick) throw new Error('No fonts were found on this machine');
+        t.font = pick.id;
+      }
+      return FL.load(t.font);
+    }).then(function (font) {
+      var items = window.Text.layout(font, t);
+      if (!items.length) throw new Error('Nothing to type yet');
+      loadItems(items, textName(t.text), null, null);
+      var L = Doc.selected(doc);
+      if (!L) return null;
+      L.source.text = t;
+      // Type prints in the ink, white on the dark canvas by default, the way
+      // a photo does. The source colour of an outline is nothing worth keeping.
+      L.paint.useSourceColours = false;
+      L.paint.fill = '#ffffff';
+      syncPanels();
+      markDirty(false);
+      return L;
+    }).catch(function (e) {
+      fail(e.message || String(e));
+      return null;
+    });
+  }
+
+  function focusText() {
+    var ta = document.querySelector('#panel-layer textarea');
+    if (ta) { ta.focus(); ta.select(); }
+  }
+
+  function isFont(file) {
+    return /\.(ttf|otf|ttc|woff)$/i.test(file.name || '');
+  }
+
+  /* A font file dropped or opened: kept by the shell, then used at once,
+   * on the text that is there or on new text if there is none. */
+  function addFontFile(f) {
+    window.FontLib.addFile(f).then(function (entry) {
+      if (!entry) return null;
+      var L = Doc.selected(doc);
+      if (L && L.source.text) {
+        L.source.text.font = entry.id;
+        return window.FontLib.load(entry.id).then(function () { retext(L, false); syncPanels(); });
+      }
+      return loadText({ font: entry.id });
+    }).catch(function (e) {
+      fail('Could not add that font: ' + (e.message || e));
+    });
+  }
+
   var PIXEL_CAP = 2600;      // plenty for any screen frequency worth printing
 
   function loadImageFile(file) {
@@ -794,7 +900,8 @@
 
   function openFile(f) {
     if (!f) return;
-    if (isImage(f)) loadImageFile(f);
+    if (isFont(f)) addFontFile(f);
+    else if (isImage(f)) loadImageFile(f);
     else f.text().then(function (t) { loadMarkup(t, f.name); });
   }
 
@@ -923,6 +1030,16 @@
     // it just bound, and before the first paint so nothing is laid out twice.
     if (window.Mobile) window.Mobile.start();
     paint();
+    // The font list is built by the shell on the first run, which takes a
+    // few seconds across a thousand files, so it starts after the first
+    // paint and the picker fills in when it lands.
+    if (window.FontLib) {
+      window.FontLib.onChange(function () {
+        var row = panels.layer && panels.layer.rows['source.text.font'];
+        if (row && row.repaint) { row.repaint(); panels.layer.sync(); }
+      });
+      setTimeout(function () { window.FontLib.list(false).catch(function () {}); }, 1200);
+    }
     // Last line of boot on purpose: reaching it is the proof that whatever
     // source this launch is running actually works.
     if (window.Updater) window.Updater.start();
@@ -932,6 +1049,9 @@
 
   function wireChrome() {
     $('open').onclick = function () { $('file').click(); };
+    $('type').onclick = function () {
+      loadText({}).then(function (L) { if (L) focusText(); });
+    };
     $('file').onchange = function () { openFile(this.files[0]); this.value = ''; };
 
     $('pasteBtn').onclick = function () {
@@ -1127,6 +1247,7 @@
         return;
       }
       if (meta && e.key.toLowerCase() === 'o') { e.preventDefault(); $('file').click(); return; }
+      if (meta && e.key.toLowerCase() === 't') { e.preventDefault(); $('type').click(); return; }
       if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); saveSvg(false); return; }
       if (meta && e.key === '0') { e.preventDefault(); $('fit').click(); return; }
       if (meta && (e.key === '=' || e.key === '+')) { e.preventDefault(); viewport.zoomTo(viewport.view.k * 1.25); return; }
@@ -1373,6 +1494,9 @@
     toggleBackground: toggleBackground,
     bgState: function () { return bgJob; },
     setCanvas: setCanvas,
+    loadText: loadText,
+    retext: function (L) { retext(L || Doc.selected(doc), false); },
+    fonts: function () { return window.FontLib; },
     history: history,
     syncPanels: syncPanels,
     selected: function () { return Doc.selected(doc); },

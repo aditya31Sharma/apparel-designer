@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "web": "python3 serve.py",
-    "test": "node test/halftone.test.js && node test/engine.test.js && node test/geom.test.js && node test/raster.test.js && node test/registry.test.js && node test/update.test.js && node test/update-network.test.js",
+    "test": "node test/halftone.test.js && node test/engine.test.js && node test/geom.test.js && node test/raster.test.js && node test/registry.test.js && node test/update.test.js && node test/update-network.test.js && node test/fonts.test.js && node test/text.test.js",
     "suite": "electron . --suite --dpr=2",
     "bench": "electron . --bench --dpr=2",
     "dist": "electron-builder --mac --config electron-builder.yml --publish never",

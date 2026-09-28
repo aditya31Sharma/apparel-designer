@@ -184,6 +184,40 @@
     layer: function () {
       return [
         {
+          title: 'Type', id: 'text', showIf: 'text',
+          rows: [
+            { kind: 'textarea', id: 'source.text.text', label: 'Text', icon: 'type',
+              tip: 'What it says. A new line here is a new line there' },
+            { kind: 'fontpick', id: 'source.text.font', label: 'Font', icon: 'type',
+              items: function () {
+                var FL = root.FontLib;
+                return FL ? FL.entries().map(function (e) {
+                  return { group: FL.sourceLabel(e.source), value: e.id, label: e.full };
+                }) : [];
+              },
+              rescan: function (repaint) {
+                if (root.FontLib) root.FontLib.list(true).then(repaint, repaint);
+              },
+              tip: 'Every font on this machine: Adobe Fonts, the ones in Downloads, zipped ' +
+                   'or not, yours, and the system’s. Drop a font file on the canvas to add one' },
+            { kind: 'range', id: 'source.text.size', label: 'Size', icon: 'sizeIcon',
+              min: 8, max: 2000, step: 1, fmt: function (v) { return Math.round(v) + 'px'; },
+              tip: 'The type size, in artwork pixels' },
+            { kind: 'range', id: 'source.text.tracking', label: 'Tracking', icon: 'spread',
+              min: -200, max: 800, step: 1,
+              tip: 'Space between letters, in thousandths of an em, the way a layout program counts it' },
+            { kind: 'range', id: 'source.text.leading', label: 'Line height', icon: 'tone',
+              min: 0.6, max: 2.5, step: 0.01, fmt: pct,
+              tip: 'Space between lines, as a share of the size' },
+            { kind: 'segment', id: 'source.text.align', label: 'Align', icon: 'pos',
+              options: [
+                { value: 'left', label: 'Left' }, { value: 'centre', label: 'Centre' },
+                { value: 'right', label: 'Right' }
+              ],
+              tip: 'How the lines sit against each other' }
+          ]
+        },
+        {
           title: 'Colour', id: 'colour',
           rows: [
             { kind: 'colour', id: 'paint.fill', label: 'Ink', icon: 'fill',

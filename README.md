@@ -79,6 +79,19 @@ canvas, which is a print on a black tee, and both are one swatch away from
 anything else. **Invert** prints the light parts of a photograph instead of the
 dark, which is what a light ink on a dark garment wants.
 
+<img src="docs/media/type.png" width="260" align="right" alt="">
+
+### Type
+
+Press the T, or Cmd T, and type. Every font on this machine is in the list:
+Adobe Fonts synced by Creative Cloud, straight out of their hidden folder; the
+fonts sitting in Downloads, zipped or not; the ones in your font folder; and the
+system's. Pick one, set the size, tracking, line height and alignment, and the
+words become outlines, the same kind of thing an SVG gives, so the warp bends
+them, the dither chews them and the halftone screens them. Drop a font file on
+the canvas to add one. The file leaves as paths, so it opens anywhere without
+the font.
+
 ### Background removal
 
 Cuts the subject out of a photo so the effects stop putting ink on the sky. Runs
@@ -275,6 +288,23 @@ and a red logo came out of a one-colour screen as blank paper. Duotone gives the
 colour the whole tone range and eases the dark ink in past an adjustable split,
 so the two overprint in the shadows the way a risograph does, instead of being
 mono with a tint.
+
+</details>
+
+<details>
+<summary><b>Fonts</b></summary>
+
+The shell walks `~/Library/Fonts`, `/Library/Fonts`, `/System/Library/Fonts`,
+`~/Downloads` (three levels deep, reading inside zips) and Creative Cloud's
+`CoreSync/plugins/livetype` folder, where Adobe Fonts sit filed by number with
+their names in `entitlements.xml`. Names are read straight from each font's
+`name` table, no library, and cached against size and modification time, so a
+rescan after the first is a directory walk. A collection (`.ttc`) is listed as
+its faces and each is handed out as a single font file, since the outline
+parser reads single fonts only; the cmap subtable formats it cannot read are
+dropped from that file so Apple's system faces load. Outlines come from
+opentype.js, vendored under `src/vendor` (MIT). About one in sixty of Apple's
+decorative faces still will not parse, and the panel says so when one is picked.
 
 </details>
 

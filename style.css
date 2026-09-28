@@ -185,6 +185,18 @@ aside{width:var(--panelw);flex:none;background:var(--panel);border-left:1px soli
  * its inks, so it sits on white the way the print would */
 #panel-halftone .tiles .thumb.paper{background:#f4f4f4}
 
+/* typing: a box that grows, and a font list that runs to hundreds */
+.pr.tall{align-items:flex-start}
+.pr.tall .gi,.pr.tall .lbl{margin-top:3px}
+.ta{flex:1;min-width:0;min-height:46px;max-height:200px;resize:vertical;
+  background:var(--field);border:1px solid transparent;border-radius:4px;padding:4px 6px;
+  color:var(--ink);font:inherit;line-height:1.35}
+.ta:hover{border-color:var(--line2)}
+.ta:focus{border-color:var(--accent);outline:none}
+.fontpick .find{flex:1;width:auto;text-align:left}
+.fontpick .sel{max-width:100%}
+body.mobile .ta{font-size:16px;min-height:60px}
+
 /* a section folded away until asked for */
 .sec.fold h2{cursor:pointer}
 .sec.fold.closed h2{margin-bottom:0}
