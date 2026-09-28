@@ -7,6 +7,11 @@
       d + (extra || '') + '</svg>';
   };
   root.ICON = {
+    /* The app's own logo: three panels falling away in perspective. Drawn
+     * solid, because at eighteen pixels an outline of this is mud. */
+    brand:   P('<path d="M3.3 5.4 9.6 2.8v10.4L3.3 10.6z" fill="currentColor" stroke="none"/>' +
+               '<path d="M9.8 4.0 11.2 3.6v9.0l-1.4-.6z" fill="currentColor" stroke="none"/>' +
+               '<path d="M11.4 4.4 12.8 4.2v7.7l-1.4-.3z" fill="currentColor" stroke="none"/>'),
     halftone:P('<circle cx="4" cy="4" r="2.4" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="2.9" fill="currentColor" stroke="none"/><circle cx="14" cy="7" r=".9" fill="currentColor" stroke="none"/><circle cx="7" cy="14" r=".9" fill="currentColor" stroke="none"/>'),
     lock:    P('<rect x="3.5" y="7" width="9" height="6.5" rx="1.3"/><path d="M5.8 7V5.2a2.2 2.2 0 014.4 0V7"/>'),
     rotate:  P('<path d="M13 8a5 5 0 11-1.6-3.7"/><path d="M13.3 2v3h-3"/>'),

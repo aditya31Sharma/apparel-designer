@@ -15,7 +15,7 @@
     });
   }
   injectIcons();
-  $('brandMark').innerHTML = window.ICON.halftone;
+  $('brandMark').innerHTML = window.ICON.brand;
   var big = document.querySelector('#empty .big');
   if (big) big.innerHTML = window.ICON.open;
 
