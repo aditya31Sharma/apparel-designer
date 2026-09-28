@@ -187,7 +187,7 @@ npm run dist               # build dist/Apparel-Designer-mac-arm64.dmg
 
 ```bash
 npm test                   # 181 engine checks, no browser needed
-npm run suite              # 415 checks driving the real desktop build
+npm run suite              # 418 checks driving the real desktop build
 npm run bench              # timings for every heavy path
 npm run shots              # regenerate the screenshots in this README
 electron . --sheet         # render every effect over the test images
@@ -288,7 +288,9 @@ back to a corner-colour cut rather than doing nothing.
 
 The resulting matte feeds the halftone's ink coverage and the dither's trace, so
 removing the background genuinely removes it from the vector output rather than
-hiding it behind something.
+hiding it behind something. It also applies to the photo itself while no effect
+is running, which since an import applies nothing is the state most people press
+the button in.
 
 </details>
 

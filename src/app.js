@@ -360,6 +360,47 @@
     syncHud();
   }
 
+  /* The imported picture with the cut-out applied, for the case where nothing
+   * else has been. Removing the background used to be invisible until an
+   * effect was switched on, because the untouched-photo path draws the source
+   * bitmap and the source bitmap knows nothing about the matte: the cut was
+   * computed, stored and correct, and the canvas carried on showing the photo
+   * it came from. Cached against the matte object itself, so re-running the
+   * cut replaces it and nothing else does. */
+  var matted = {};
+
+  function mattedBitmap(L) {
+    var img = L.source.bitmap;
+    if (!img) return null;
+    if (!L.matte) return img;
+    var hit = matted[L.id];
+    if (hit && hit.matte === L.matte) return hit.canvas;
+
+    var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if (!w || !h) return img;
+    try {
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      var g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0, w, h);
+      var frame = g.getImageData(0, 0, w, h);
+      var px = frame.data, mw = L.matte.w, mh = L.matte.h, mask = L.matte.mask;
+      for (var y = 0; y < h; y++) {
+        var my = Math.min(mh - 1, (y * mh / h) | 0);
+        for (var x = 0; x < w; x++) {
+          var mx = Math.min(mw - 1, (x * mw / w) | 0);
+          var i = (y * w + x) * 4;
+          px[i + 3] = (px[i + 3] * mask[my * mw + mx] / 255) | 0;
+        }
+      }
+      g.putImageData(frame, 0, 0);
+      matted[L.id] = { matte: L.matte, canvas: c };
+      return c;
+    } catch (e) {
+      return img;
+    }
+  }
+
   /* A photo that no effect has touched yet.
    *
    * An imported picture is carried as a frame rectangle with the pixels riding
@@ -370,7 +411,7 @@
     if (!L.source.bitmap || !r || r.plates) return null;
     if (!r.shapes || !r.shapes.length) return null;
     for (var i = 0; i < r.shapes.length; i++) if (!r.shapes[i].frame) return null;
-    return L.source.bitmap;
+    return mattedBitmap(L);
   }
 
   function paintFor(L) {
@@ -542,6 +583,7 @@
     renders = {};
     pixelsSent = null;
     imageUris = {};
+    matted = {};
     history.clear();
 
     $('srcName').textContent = name + '  ·  ' +
@@ -641,9 +683,11 @@
   var imageUris = {};
 
   function imageUriFor(L) {
-    if (imageUris[L.id]) return imageUris[L.id];
-    var img = L.source.bitmap;
+    var img = mattedBitmap(L);
     if (!img) return null;
+    // Keyed on the matte too: a cut-out is a different picture.
+    var key = L.id + '|' + (L.matte ? L.matte.w + 'x' + L.matte.h + '|' + (L.matte.source || '') : 'raw');
+    if (imageUris[key]) return imageUris[key];
     try {
       // The picture as it arrived, not the working copy: the pixels kept for
       // the effects are capped in size, and an export should not be.
@@ -655,8 +699,8 @@
       var c = document.createElement('canvas');
       c.width = w; c.height = h;
       c.getContext('2d').drawImage(img, 0, 0, w, h);
-      imageUris[L.id] = c.toDataURL('image/png');
-      return imageUris[L.id];
+      imageUris[key] = c.toDataURL('image/png');
+      return imageUris[key];
     } catch (e) {
       return null;
     }

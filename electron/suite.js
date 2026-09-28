@@ -421,6 +421,58 @@ const SCRIPT = `(async function(){
   window.App.doc().layers = [P];
   window.App.doc().selection = P.id;
 
+  /* ---- a cut-out shows before anything is applied ----
+   *
+   * The matte reaches the effects, which is what the checks below cover. It
+   * also has to reach the canvas when no effect is running, because since an
+   * import applies nothing that is the state people press the button in. It
+   * did not: the cut was computed, stored and correct, and the canvas carried
+   * on drawing the photo it came from, so removing the background looked like
+   * it had done nothing at all.
+   *
+   * Driven with a matte made here rather than by running the model, which
+   * takes seven seconds and is not what this is asking about. */
+  beat('cut-out on an untouched photo');
+  offAll(P);
+  await withDeadline(recompute(), 30000, 'untouched before matte');
+  document.getElementById('fit').click();
+  await wait(400); window.App.viewport().invalidate(); await frame();
+
+  var canvasEl = document.getElementById('canvas');
+  var gEl = canvasEl.getContext('2d');
+  var dprEl = Math.min(2, window.devicePixelRatio || 1);
+  function samplePhoto(fx, fy){
+    var m = window.Doc.layerMatrix(P), b = P.source.bbox;
+    var s2 = window.App.viewport().toScreen(
+      window.Doc.applyMatrix(m, b.x + b.width * fx, b.y + b.height * fy));
+    return gEl.getImageData(Math.round(s2.x * dprEl), Math.round(s2.y * dprEl), 1, 1).data;
+  }
+  var before = samplePhoto(0.5, 0.5);
+
+  // Everything knocked out but a strip down the middle.
+  var mw = 64, mh = 64, mask = new Uint8Array(mw * mh);
+  for (var my = 0; my < mh; my++){
+    for (var mx = 0; mx < mw; mx++) mask[my * mw + mx] = (mx > 26 && mx < 38) ? 255 : 0;
+  }
+  P.matte = { mask: mask, w: mw, h: mh, source: 'test' };
+  await withDeadline(recompute(), 30000, 'untouched after matte');
+  await wait(400); window.App.viewport().invalidate(); await frame();
+  var cut = samplePhoto(0.12, 0.5);
+  var kept = samplePhoto(0.5, 0.5);
+
+  check('a cut-out shows on a photo with nothing applied',
+    Math.abs(cut[0] - 30) < 12 && Math.abs(cut[1] - 30) < 12 && Math.abs(cut[2] - 30) < 12,
+    'knocked-out area reads ' + [cut[0], cut[1], cut[2]].join(',') + ' against a 30,30,30 canvas');
+  check('the kept part of a cut-out is still the photo',
+    Math.abs(kept[0] - before[0]) < 14 && Math.abs(kept[1] - before[1]) < 14,
+    [kept[0], kept[1], kept[2]].join(',') + ' vs ' + [before[0], before[1], before[2]].join(','));
+  check('a cut-out photo exports cut out', (function(){
+    var svg = window.App.svgText(false);
+    return svg.indexOf('<image') > 0 && svg.indexOf('data:image/png') > 0;
+  })(), 'svg carries the matted picture');
+  P.matte = null;
+  await withDeadline(recompute(), 30000, 'clear matte');
+
   // ---- background removal ----
   clearErr();
   var st = await window.desktop.backgroundStatus();
