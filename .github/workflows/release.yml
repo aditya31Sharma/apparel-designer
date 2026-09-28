@@ -1,0 +1,77 @@
+# Builds the Mac app and publishes it, so the download link on the README and
+# the download page keeps working without anybody building anything by hand.
+#
+# Triggered by pushing a version tag:
+#   npm version minor && npm run release
+#   git push origin main --tags
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # The engine maths only. The desktop suite needs a display and real test
+      # artwork, neither of which a runner has.
+      - run: npm test
+
+  build:
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Unsigned on purpose: notarising needs a paid Apple developer account.
+      # Without this, electron-builder goes looking for an identity in the
+      # runner's empty keychain and fails the build rather than skipping it.
+      - name: Build the dmg
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Check the version in the tag matches the one in package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          man="$(node -p "require('./app-version.json').version")"
+          if [ "$tag" != "$pkg" ] || [ "$tag" != "$man" ]; then
+            echo "tag $tag, package.json $pkg, app-version.json $man" >&2
+            echo "These have to agree, or installed copies update to a tag that is not here." >&2
+            exit 1
+          fi
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          generate_release_notes: true
+          body: |
+            ### Install
+
+            1. Download `Apparel-Designer-mac-arm64.dmg` below
+            2. Open it and drag the app onto Applications
+            3. First launch only: macOS will say it cannot verify the developer.
+               Click **Done**, then open **System Settings → Privacy & Security**,
+               scroll down and click **Open Anyway**.
+
+            Full instructions: https://aditya31sharma.github.io/apparel-designer/
+
+            Copies already installed update themselves. No need to download this
+            unless the app told you to.

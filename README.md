@@ -1,53 +1,217 @@
+<div align="center">
+
+<img src="docs/media/icon.png" width="128" alt="">
+
 # Apparel Designer
 
-A local desktop tool for putting print effects through garment artwork. Vector in,
-vector out, at production quality.
+**Print effects for garment artwork. Vector in, vector out.**
 
-Three effects, independent, none applied until you switch one on:
+Halftone a photo into a real CMYK dot screen. Chew a logo up with ink erosion and
+grunge. Bend artwork onto a garment with four corner handles. Then export the
+whole thing as SVG your printer can actually use.
+
+Runs on your own Mac. Nothing is uploaded. No account, no subscription.
+
+### [⬇ Download for Mac](https://github.com/aditya31Sharma/apparel-designer/releases/latest/download/Apparel-Designer-mac-arm64.dmg)
+
+<sub>Apple Silicon · free · MIT licensed · updates itself</sub>
+
+<img src="docs/media/hero.png" alt="Apparel Designer with a photo screened into a four colour halftone">
+
+</div>
+
+---
+
+## What it does
+
+| | | |
+|:--:|:--:|:--:|
+| <img src="docs/media/halftone-cmyk.png" width="240" alt=""> | <img src="docs/media/halftone-mono.png" width="240" alt=""> | <img src="docs/media/dither.png" width="240" alt=""> |
+| **Four colour halftone**<br><sub>Real screen angles, real dot gain</sub> | **One colour halftone**<br><sub>For a single screen on a tee</sub> | **Ink erosion and grunge**<br><sub>Nine textures, spread, melt</sub> |
+
+<img src="docs/media/warp.png" width="260" align="right" alt="">
+
+### Warp
+
+Four corner handles and 18 deformation presets. Drag a logo into perspective,
+arch it, bulge it, wave it. Handles snap to whole pixels and to each other, hold
+Cmd to ignore that.
+
+### Halftone
+
+A printing RIP done as geometry, not as a filter. Six dot shapes, real screen
+angles, adjustable black generation, paper fibre and ink texture. CMYK, duotone
+or one colour. Sized by **dot pitch in pixels**, so a screen you tuned on a logo
+behaves the same on a 3000px photo.
+
+### Dither
+
+Signed distance field ink erosion: spatter, pitting, blotching, spread past the
+edge, nine grunge textures and a melt pass. The thing that makes a print look
+pulled through a screen rather than printed by a machine.
+
+### Background removal
+
+Cuts the subject out of a photo so the effects stop putting ink on the sky. Runs
+a model on your own machine. The image never leaves it.
+
+<br clear="right">
+
+### Everything is vector on the way out
+
+One compound path per ink inside a multiply group, so Illustrator opens four
+objects and not a hundred thousand. **Plates** writes each ink as its own named
+group, unblended, which is what a printer asks for. The Save button tells you the
+file size before you press it.
+
+---
+
+## Getting it
+
+You do not need to know anything about code. Three steps.
+
+**1. Download it.**
+[Apparel Designer for Mac](https://github.com/aditya31Sharma/apparel-designer/releases/latest/download/Apparel-Designer-mac-arm64.dmg)
+
+**2. Install it.**
+Open the file you downloaded, then drag the app icon onto the Applications
+folder shown next to it. That is the whole install.
+
+**3. Open it the first time.**
+
+The app is not signed by Apple, because that costs $99 a year and this is free.
+So macOS asks once, the first time only:
+
+- Open **Applications**, double-click **Apparel Designer**
+- macOS says it cannot verify the developer. Click **Done**
+- Open **System Settings → Privacy & Security**
+- Scroll down. There is a line about Apparel Designer. Click **Open Anyway**
+- Confirm with your password or Touch ID
+
+That is it, forever. Every launch after that is a normal double-click, and the
+app sits in Spotlight and Launchpad like anything else.
+
+> **Something went wrong?**
+> If macOS says the app "is damaged and can't be opened", the download was
+> interrupted. Delete it and download again.
+> [Open an issue](https://github.com/aditya31Sharma/apparel-designer/issues/new)
+> and say what happened, and it will get fixed.
+
+**Requirements:** a Mac with Apple Silicon (M1 or newer) on macOS 11 or later.
+On an Intel Mac, run it from source instead, see [Building it](#building-it).
+
+---
+
+## It updates itself
+
+Every time you open the app it asks GitHub whether there is a newer version. If
+there is, it fetches it in the background and shows this in the corner of the
+canvas. Nothing interrupts you, and nothing happens until you say so.
+
+<img src="docs/media/update-notice.png" width="500" alt="A strip in the corner of the canvas reading: Version 2.2.0 is ready. Restart now. Later.">
+
+Updates are the app's own source, about a megabyte, not a fresh 150MB download.
+If a change needs a whole new build the app tells you that instead and links to
+it.
+
+If an update ever fails to start, the next launch notices, throws it away and
+goes back to the version that worked. You can also force that from
+**Help → Use the Built-in Version**, or check on demand with
+**Help → Check for Updates**.
+
+Nothing is sent anywhere during a check. It is one request for a small file.
+
+---
+
+## Using it
 
 | | |
 |---|---|
-| **Warp** | 18 deformation presets plus four live corner handles |
-| **Dither** | SDF ink erosion, spread, nine grunge textures, melt |
-| **Halftone** | CMYK dot screen with real shapes, angles and paper simulation |
+| Open artwork | `Cmd O`, or drag a file onto the canvas, or paste with `Cmd V` |
+| Formats in | SVG, PNG, JPEG, WebP, AVIF |
+| Formats out | SVG, and separated SVG plates |
+| Fit to screen | `Cmd 0` |
+| Actual size | `Cmd 1` |
+| Save | `Cmd S` |
 
-Around them a proper document: the layer owns its position, size, rotation,
-opacity, fill and stroke, and keeps every one of them no matter which effects run.
+**Trackpad**
 
-## Installing it
+| Gesture | Result |
+|---|---|
+| Two-finger swipe | Pan, both axes |
+| Pinch | Zoom about the cursor |
+| Shift and scroll | Pan horizontally |
+| Space and drag, or middle-drag | Pan |
+
+Nothing is applied when you open a file. Switch on the effects you want, in any
+combination. Your position, size, rotation, opacity, fill and stroke survive
+every one of them.
+
+---
+
+## Building it
+
+For an Intel Mac, for another platform, or to change something.
 
 ```bash
+git clone https://github.com/aditya31Sharma/apparel-designer.git
+cd apparel-designer
 npm install
-npm run dist       # builds dist/Apparel Designer-*.dmg
+npm start                  # run it from source
+npm run dist               # build dist/Apparel-Designer-mac-arm64.dmg
 ```
 
-Open the dmg and drag the app to Applications. After that it is in Spotlight and
-the Launchpad like anything else, and you can keep it in the dock.
-
-The build is not signed, because notarising needs a paid Apple developer account.
-A copy you built yourself opens normally. One downloaded from somewhere else will
-need a right-click and Open the first time.
+```bash
+npm test                   # 181 engine checks, no browser needed
+npm run suite              # 377 checks driving the real desktop build
+npm run bench              # timings for every heavy path
+npm run shots              # regenerate the screenshots in this README
+electron . --sheet         # render every effect over the test images
+```
 
 **It will not start from a VS Code terminal.** VS Code exports
 `ELECTRON_RUN_AS_NODE`, which makes Electron behave as a plain Node runtime: the
-window never appears and nothing is printed. The app now detects this and says
-so. Launch it from Finder, or clear the variable:
+window never appears. The app detects this and says so. Launch it from Finder, or
+clear the variable:
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE open -a "Apparel Designer"
 ```
 
-## Working on it
+### Layout
 
-```bash
-npm start          # the desktop app, from source
-npm run web        # the same thing as a web page, on :8900
-npm test           # 149 engine checks, no browser needed
-npm run suite      # 377 checks driving the real desktop build
-npm run bench      # timings for every heavy path
+```
+electron/     main process, preload bridge, background removal, updater, harnesses
+src/engine/   warp, grunge, halftone, raster, geom, importer, snap   (no DOM)
+src/doc/      document model, effect registry, the three registrations
+src/view/     viewport, overlay, control specs, panel builder, icons
+src/workers/  the effect stack and the erosion pool, off the main thread
+src/export/   geometry to SVG
+test/         181 checks that need nothing but node
+docs/         the download page and the screenshots
 ```
 
-## Halftone
+Adding a fourth effect means one registration in `src/doc/register-effects.js`
+and one spec in `src/view/specs.js`. Nothing in the viewport, the exporter or the
+transform code has to change.
+
+### Releasing
+
+```bash
+npm version minor          # or patch, or major
+npm run release            # writes app-version.json, prints what to do next
+```
+
+`app-version.json` is what installed copies read. `minShell` in it moves only
+when a change touches something a source update cannot replace, at which point
+installed copies are told to download a new build rather than updating in place.
+
+---
+
+## How it works
+
+<details>
+<summary><b>The halftone screen</b></summary>
 
 A printing RIP, done as geometry:
 
@@ -71,18 +235,6 @@ Cells-across is relative to the artwork, so a screen tuned on a 400px logo puts 
 dots on a 2600px photo. Pitch is what "a five pixel dot" actually means and it holds
 whatever you feed it. The cell count is derived from the frame at run time.
 
-Dot shapes: round, square, ellipse, line, cross, diamond. Modes: CMYK, duotone, mono.
-
-**Export** gives one compound path per ink inside a multiply group, so Illustrator
-opens four objects rather than a hundred thousand. `Plates` writes each ink as its
-own named group, unblended, which is what a printer asks for. The suite opens every
-export back up again, because an export you cannot reopen is not an export.
-
-The Save button carries the file size before you press it, and turns amber past
-8MB. A fine screen over a large photo is half a million dots and thirteen
-megabytes: a fair file for that much geometry, but finding out by pressing Save
-is not fair.
-
 **Mono and duotone work from perceptual tone, not from the black plate.** Black
 generation is `1 - max(r,g,b)`, so a saturated colour contains no black at all
 and a red logo came out of a one-colour screen as blank paper. Duotone gives the
@@ -90,7 +242,10 @@ colour the whole tone range and eases the dark ink in past an adjustable split,
 so the two overprint in the shadows the way a risograph does, instead of being
 mono with a tint.
 
-## Background removal
+</details>
+
+<details>
+<summary><b>Background removal</b></summary>
 
 BiRefNet-lite through `onnxruntime-node`, locally. MIT licensed, which matters
 because BRIA's RMBG-2.0 scores a few points higher but ships under a licence needing
@@ -111,7 +266,10 @@ The resulting matte feeds the halftone's ink coverage and the dither's trace, so
 removing the background genuinely removes it from the vector output rather than
 hiding it behind something.
 
-## How it stays smooth
+</details>
+
+<details>
+<summary><b>How it stays smooth</b></summary>
 
 Three tiers, because a pan should not cost what a render costs:
 
@@ -137,7 +295,7 @@ needs cross-origin isolation, which Chromium grants only to http origins, which 
 why the desktop build serves itself from a loopback HTTP server rather than from
 `file://` or a custom scheme.
 
-### Three things that cost seconds, all found by measuring
+**Three things that cost seconds, all found by measuring**
 
 - **`getImageData` after drawing is a GPU stall.** Rasterising a photo through a
   canvas and reading it back cost 190ms on every recompute. The pixels were already
@@ -168,45 +326,38 @@ throws it away, starts a fresh one and retries, and falls back to the main
 thread if that keeps happening. A frozen canvas with no explanation reads as the
 whole app having hung, which is the worst way to fail.
 
-## Trackpad
+</details>
 
-macOS reports a two-finger swipe as a wheel event with `ctrlKey` false and a pinch as
-one with `ctrlKey` true. Treating both as zoom, which is the naive reading, makes a
-trackpad unusable.
+<details>
+<summary><b>Updating without a code signature</b></summary>
 
-| Gesture | Result |
-|---|---|
-| Two-finger swipe | Pan, both axes |
-| Pinch | Zoom about the cursor |
-| Shift + scroll | Pan horizontally |
-| Cmd + scroll | Zoom |
-| Space + drag, or middle-drag | Pan |
+macOS will not let an unsigned bundle replace itself through Squirrel: the updater
+checks the running app's code signature before it swaps anything, and on an
+unsigned app there is nothing to check. So the usual `electron-updater` route is
+closed unless a paid Apple developer account is in the picture.
 
-## Layout
+What is open is that the entire interface and every effect is plain HTML, CSS and
+JavaScript with no build step. That source can be replaced on disk and picked up
+on the next launch. So the app reads `app-version.json` from this repo, and when
+it is behind, fetches that tag's tarball and unpacks `index.html`, `style.css` and
+`src/` into its data directory. Those files are served in front of the bundled
+ones from then on.
 
-```
-electron/     main process, preload bridge, background removal, test harnesses
-src/engine/   warp, grunge, halftone, raster, geom, importer, snap   (no DOM)
-src/doc/      document model, effect registry, the three registrations
-src/view/     viewport, overlay, control specs, panel builder, icons
-src/workers/  the effect stack and the erosion pool, off the main thread
-src/export/   geometry to SVG
-test/         107 checks that need nothing but node
-```
+The main process, the preload bridge and anything native are never replaced this
+way. A change to those raises `minShell`, and installed copies with an older shell
+are told to download a build rather than quietly running source they cannot
+support.
 
-Adding a fourth effect means one registration in `src/doc/register-effects.js` and
-one spec in `src/view/specs.js`. Nothing in the viewport, the exporter or the
-transform code has to change.
+Every launch that uses updated source leaves a marker behind until the renderer
+reports that it started. Finding that marker still there on the next launch means
+the update broke the app, so it is deleted, the version is blocked, and the app
+goes back to what it shipped with. `test/update.test.js` covers all of it.
 
-## Test harnesses
+</details>
 
-| Command | What it does |
-|---|---|
-| `npm test` | Engine maths: halftone tone accuracy, document model, geometry, resampling |
-| `npm run suite` | Drives the real desktop build. Every preset, texture, dot shape and ink mode, on vector artwork and on photos, asserting output, a clean export, a round trip and a time budget |
-| `npm run bench` | Per-scene compute and frame timings |
-| `electron . --sheet` | Renders every effect over the test images and writes the canvases out, so output is looked at rather than inferred |
+---
 
-## Samples
+## Licence
 
-`LICENSE-SAMPLES.md` covers the bundled outlines.
+MIT. See [LICENSE](LICENSE). The bundled sample outlines are covered separately in
+[LICENSE-SAMPLES.md](LICENSE-SAMPLES.md).
