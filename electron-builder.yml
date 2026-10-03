@@ -29,6 +29,13 @@ asarUnpack:
 # download link: /releases/latest/download/Apparel-Designer-mac-arm64.dmg
 artifactName: Apparel-Designer-mac-${arch}.dmg
 
+# Tenzen HQ's Tools page opens the app with apparel-designer://open. macOS
+# launches it, or brings it forward if it is already open; nothing else.
+protocols:
+  - name: Apparel Designer
+    schemes:
+      - apparel-designer
+
 mac:
   category: public.app-category.graphics-design
   icon: assets/icon.icns
