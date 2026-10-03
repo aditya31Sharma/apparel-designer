@@ -11,7 +11,7 @@ const menuHandlers = {};
 [
   'open', 'save', 'separations', 'copy', 'undo', 'redo',
   'fit', 'actual', 'grid', 'bg', 'removebg',
-  'tool:warp', 'tool:dither', 'tool:halftone'
+  'tool:warp', 'tool:dither', 'tool:halftone', 'mockup'
 ].forEach((name) => {
   ipcRenderer.on('menu:' + name, () => {
     const fn = menuHandlers[name];
@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('desktop', {
 
   openFile: () => ipcRenderer.invoke('dialog:open'),
   saveFile: (name, text) => ipcRenderer.invoke('dialog:save', name, text),
+  saveBinary: (name, data) => ipcRenderer.invoke('dialog:saveBinary', name, data),
 
   removeBackground: (payload) => ipcRenderer.invoke('bg:remove', payload),
   backgroundStatus: () => ipcRenderer.invoke('bg:status'),

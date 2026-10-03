@@ -3,13 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Apparel Designer</title>
+<title>Tenzen Studio</title>
+<link rel="icon" href="src/view/brand.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <header>
-  <div class="brand"><span class="mark" id="brandMark"></span><b>Apparel Designer</b></div>
+  <div class="brand"><span class="mark" id="brandMark"></span><b>Tenzen Studio</b></div>
+
+  <div class="modes" role="tablist" aria-label="Workspace">
+    <button class="mode on" id="mode-art" role="tab" aria-selected="true"
+      data-tip="Artwork|Warp, dither and halftone your design, save SVG">Artwork</button>
+    <button class="mode" id="mode-3d" role="tab" aria-selected="false"
+      data-tip="3D Mockup|Put designs on a garment and save a GLB for Shopify">3D Mockup</button>
+  </div>
+  <span class="sep"></span>
 
   <button class="tbtn" id="open" data-icon="open"
     data-tip="Open|An SVG, or a photo to screen. Cmd O"></button>
@@ -71,6 +80,8 @@
     <div id="update" hidden></div>
     <div id="toast" hidden></div>
   </div>
+
+  <iframe id="mockup" title="3D Mockup" hidden></iframe>
 
   <aside>
     <div class="scroll">
@@ -134,6 +145,7 @@
 <script src="src/view/mobile.js"></script>
 <script src="src/view/updater.js"></script>
 <script src="src/view/fontsync.js"></script>
+<script src="src/view/mockup.js"></script>
 <script src="src/app.js"></script>
 </body>
 </html>

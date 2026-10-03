@@ -69,7 +69,7 @@ jobs:
           body: |
             ### Install
 
-            1. Download `Apparel-Designer-mac-arm64.dmg` below
+            1. Download `Tenzen-Studio-mac-arm64.dmg` below
             2. Open it and drag the app onto Applications
             3. First launch only: macOS will say it cannot verify the developer.
                Click **Done**, then open **System Settings → Privacy & Security**,

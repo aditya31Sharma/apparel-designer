@@ -1,5 +1,7 @@
+# The bundle id predates the rename to Tenzen Studio and stays: macOS ties the
+# URL scheme registration and the user's Open Anyway approval history to it.
 appId: com.tenzen.apparel-designer
-productName: Apparel Designer
+productName: Tenzen Studio
 directories:
   output: dist
   buildResources: assets
@@ -26,14 +28,16 @@ asarUnpack:
   - node_modules/onnxruntime-node/**
   - node_modules/onnxruntime-common/**
 # No version in the filename, so the release page always carries the same
-# download link: /releases/latest/download/Apparel-Designer-mac-arm64.dmg
-artifactName: Apparel-Designer-mac-${arch}.dmg
+# download link: /releases/latest/download/Tenzen-Studio-mac-arm64.dmg
+artifactName: Tenzen-Studio-mac-${arch}.dmg
 
-# Tenzen HQ's Tools page opens the app with apparel-designer://open. macOS
-# launches it, or brings it forward if it is already open; nothing else.
+# tenzen-studio://open launches the app, or brings it forward if it is already
+# open; nothing else. apparel-designer:// is the old name, kept because Tenzen
+# HQ's Tools page links to it.
 protocols:
-  - name: Apparel Designer
+  - name: Tenzen Studio
     schemes:
+      - tenzen-studio
       - apparel-designer
 
 mac:
@@ -49,7 +53,7 @@ mac:
   # replace its bundle, which macOS will not do without a signature.
   identity: null
 dmg:
-  title: Apparel Designer
+  title: Tenzen Studio
   contents:
     - x: 140
       y: 180

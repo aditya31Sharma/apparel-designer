@@ -1,4 +1,4 @@
-/* Apparel Designer, desktop shell.
+/* Tenzen Studio, desktop shell.
  *
  * The renderer is the same plain HTML and JS the web build serves, so nothing
  * here is required for the app to run; it adds the four things a browser tab
@@ -14,10 +14,10 @@
  * Say so rather than exiting quietly. */
 if (process.env.ELECTRON_RUN_AS_NODE) {
   process.stderr.write(
-    'Apparel Designer cannot start while ELECTRON_RUN_AS_NODE is set.\n' +
+    'Tenzen Studio cannot start while ELECTRON_RUN_AS_NODE is set.\n' +
     'That variable makes Electron behave as a plain Node runtime.\n' +
     'Launch it from Finder, or clear the variable first:\n' +
-    '  env -u ELECTRON_RUN_AS_NODE open -a "Apparel Designer"\n');
+    '  env -u ELECTRON_RUN_AS_NODE open -a "Tenzen Studio"\n');
   process.exit(1);
 }
 
@@ -28,6 +28,33 @@ const http = require('http');
 const net = require('net');
 
 const UPDATE = require('./update.js');
+
+/* The app was called Apparel Designer until 3.0.0, and its data folder carried
+ * that name. Bring over what is worth keeping, once and before anything opens
+ * the new folder: the 213MB background model, the font index, and the page's
+ * saved preferences. Copied, not moved, so an old copy still installed keeps
+ * working; on APFS the copy is a clone and costs no space. Downloaded source
+ * updates stay behind on purpose: they are older than this build. Only a
+ * packaged app does this, so running from a checkout never touches anyone's data. */
+function adoptOldData() {
+  if (!app.isPackaged) return;
+  const fsSync = require('fs');
+  const old = path.join(app.getPath('appData'), 'Apparel Designer');
+  const now = app.getPath('userData');
+  if (old === now || !fsSync.existsSync(old)) return;
+  for (const name of ['models', 'fonts-index.json', 'Local Storage']) {
+    const from = path.join(old, name), to = path.join(now, name);
+    try {
+      if (fsSync.existsSync(from) && !fsSync.existsSync(to)) {
+        fsSync.mkdirSync(now, { recursive: true });
+        fsSync.cpSync(from, to, { recursive: true, mode: fsSync.constants.COPYFILE_FICLONE });
+      }
+    } catch (e) {
+      console.warn('could not bring over ' + name + ': ' + e.message);
+    }
+  }
+}
+adoptOldData();
 
 /* Where the bundled source lives, and where an update from GitHub lives once
  * one has been unpacked. The overlay is consulted first, file by file, so a
@@ -54,7 +81,7 @@ const MIME = {
   '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
-  '.woff2': 'font/woff2', '.wasm': 'application/wasm'
+  '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.glb': 'model/gltf-binary'
 };
 
 let serverOrigin = null;
@@ -193,7 +220,7 @@ function buildMenu() {
       submenu: [
         { label: 'Open...', accelerator: 'CmdOrCtrl+O', click: send('menu:open') },
         { type: 'separator' },
-        { label: 'Save SVG...', accelerator: 'CmdOrCtrl+S', click: send('menu:save') },
+        { label: 'Save...', accelerator: 'CmdOrCtrl+S', click: send('menu:save') },
         { label: 'Save Separations...', accelerator: 'Shift+CmdOrCtrl+S', click: send('menu:separations') },
         { label: 'Copy SVG', accelerator: 'Shift+CmdOrCtrl+C', click: send('menu:copy') },
         { type: 'separator' },
@@ -229,6 +256,7 @@ function buildMenu() {
         { label: 'Warp', accelerator: 'CmdOrCtrl+Alt+1', click: send('menu:tool:warp') },
         { label: 'Dither', accelerator: 'CmdOrCtrl+Alt+2', click: send('menu:tool:dither') },
         { label: 'Halftone', accelerator: 'CmdOrCtrl+Alt+3', click: send('menu:tool:halftone') },
+        { label: '3D Mockup', accelerator: 'CmdOrCtrl+Alt+4', click: send('menu:mockup') },
         { type: 'separator' },
         { label: 'Remove Background', accelerator: 'CmdOrCtrl+Alt+B', click: send('menu:removebg') }
       ]
@@ -279,6 +307,18 @@ ipcMain.handle('dialog:save', async (_e, name, text) => {
   });
   if (res.canceled || !res.filePath) return null;
   await fs.writeFile(res.filePath, text, 'utf8');
+  return { path: res.filePath };
+});
+
+/* A binary file, the 3D Mockup's GLB, through the same native dialog. */
+ipcMain.handle('dialog:saveBinary', async (_e, name, data) => {
+  const ext = (path.extname(name).slice(1) || 'glb').toLowerCase();
+  const res = await dialog.showSaveDialog(win, {
+    defaultPath: path.join(app.getPath('downloads'), name),
+    filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+  });
+  if (res.canceled || !res.filePath) return null;
+  await fs.writeFile(res.filePath, Buffer.from(data));
   return { path: res.filePath };
 });
 

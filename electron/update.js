@@ -141,7 +141,10 @@ function resolveOverlay(userData, shellVersion) {
     return { dir: null, version: shellVersion, recovered: recovered };
   }
   const dir = path.join(d.versions, active.version);
-  if (!looksComplete(dir) || cmp(active.minShell || '0', shellVersion) > 0) {
+  // A downloaded source no newer than this shell is what a fresh download
+  // replaced. Serving it would put the old interface in front of the new app.
+  if (cmp(active.version, shellVersion) <= 0 ||
+      !looksComplete(dir) || cmp(active.minShell || '0', shellVersion) > 0) {
     try { fs.unlinkSync(d.active); } catch (e) { /* already gone */ }
     return { dir: null, version: shellVersion, recovered: recovered };
   }

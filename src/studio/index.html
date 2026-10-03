@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D Mockup</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./studio.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">TENZEN <span>3D Mockup</span></div>
+  <label class="garment-pick">Base model
+    <select id="garment"></select>
+  </label>
+  <div class="views" role="group" aria-label="Camera">
+    <button data-view="front">Front</button>
+    <button data-view="back">Back</button>
+    <button data-view="left">Left</button>
+    <button data-view="right">Right</button>
+    <button data-view="top">Top</button>
+  </div>
+  <div class="spacer"></div>
+  <label class="toggle" title="Dashed guides for the usual print spots. They never cut a design: place it anywhere."><input type="checkbox" id="showZones"> Show print areas</label>
+  <label class="toggle">Texture size
+    <select id="exportRes">
+      <option value="auto" selected>Auto (sharpest under 15 MB)</option>
+      <option value="4096">4096</option>
+      <option value="3072">3072</option>
+      <option value="2048">2048</option>
+      <option value="1536">1536</option>
+    </select>
+  </label>
+  <button id="exportBtn" class="primary">Download GLB</button>
+</header>
+
+<main class="layout">
+  <aside class="panel left">
+    <section>
+      <h2>Fabric</h2>
+      <div id="parts"></div>
+      <div class="row">
+        <label>Texture strength <output id="strengthOut">100%</output></label>
+        <input type="range" id="strength" min="0" max="200" value="100">
+      </div>
+      <div class="row">
+        <label>Texture scale <output id="scaleOut">1x</output></label>
+        <input type="range" id="texScale" min="25" max="300" step="25" value="100">
+      </div>
+      <div class="row" id="contrastRow">
+        <label>Wash contrast <output id="contrastOut">100%</output></label>
+        <input type="range" id="contrast" min="0" max="250" value="100">
+      </div>
+    </section>
+
+    <section>
+      <h2>Add design</h2>
+      <p class="hint">PNG with transparency. Drop files on the model to place them where you drop. Designs can go anywhere, past the edges too: the fabric cuts them where it ends.</p>
+      <div class="add-grid" id="addGrid"></div>
+      <input type="file" id="fileInput" accept="image/png,image/webp,image/jpeg" multiple hidden>
+    </section>
+
+    <section>
+      <h2>Designs</h2>
+      <ul id="decalList" class="decal-list"></ul>
+      <p class="hint empty" id="decalEmpty">No designs yet.</p>
+    </section>
+  </aside>
+
+  <section class="stage" id="stage">
+    <canvas id="view"></canvas>
+    <canvas id="overlay"></canvas>
+    <div class="status" id="status">Loading…</div>
+    <div class="dropzone" id="dropzone">Drop to place on the model</div>
+  </section>
+
+  <aside class="panel right" id="inspector">
+    <section>
+      <h2>Selected design</h2>
+      <p class="hint" id="noSel">Select a design to move it. Drag it on the model, or use the arrow keys (1 px, Shift = 10 px).</p>
+      <div id="selControls" hidden>
+        <div class="row">
+          <label for="mode">Placement</label>
+          <select id="mode">
+            <option value="front">Front (snaps)</option>
+            <option value="back">Back (snaps)</option>
+            <option value="left">Left side (snaps)</option>
+            <option value="right">Right side (snaps)</option>
+            <option value="free">Anywhere (follows surface)</option>
+          </select>
+        </div>
+        <div class="row" id="zoneRow">
+          <label for="zone">Print area</label>
+          <select id="zone"></select>
+        </div>
+        <div class="snap" id="snapBox">
+          <div class="snap-label">Snap to the print area, horizontally</div>
+          <div class="btns">
+            <button data-snap="left" title="Left edge to area left">Left</button>
+            <button data-snap="hcenter" title="Center of area">Center</button>
+            <button data-snap="right" title="Right edge to area right">Right</button>
+          </div>
+          <div class="snap-label">Snap vertically</div>
+          <div class="btns">
+            <button data-snap="top">Top</button>
+            <button data-snap="vcenter">Middle</button>
+            <button data-snap="bottom">Bottom</button>
+          </div>
+          <div class="btns">
+            <button data-snap="garment">Garment center line</button>
+            <button data-snap="fit">Fit area width</button>
+          </div>
+          <label class="toggle small"><input type="checkbox" id="magnet" checked> Magnetic snapping while dragging</label>
+        </div>
+        <div class="row">
+          <label>Width <output id="widthOut"></output></label>
+          <input type="range" id="width" min="0.02" max="1.6" step="0.001">
+        </div>
+        <div class="row">
+          <label>Rotation <output id="rotOut">0°</output></label>
+          <input type="range" id="rotation" min="-180" max="180" step="1" value="0">
+        </div>
+        <div class="row">
+          <label title="How far the print wraps around curves (sleeves, brim). Raise it if edges go missing.">Wrap around curves <output id="wrapOut">100%</output></label>
+          <input type="range" id="wrap" min="20" max="250" step="5" value="100">
+        </div>
+        <div class="row pos">
+          <span id="posOut"></span>
+        </div>
+        <div class="btns">
+          <button id="dupBtn">Duplicate</button>
+          <button id="upBtn" title="Bring forward">Forward</button>
+          <button id="downBtn" title="Send back">Back</button>
+          <button id="delBtn" class="danger">Delete</button>
+        </div>
+      </div>
+    </section>
+    <section class="shortcuts">
+      <h2>Keys</h2>
+      <ul>
+        <li><kbd>←↑→↓</kbd> nudge 1 px, <kbd>Shift</kbd> 10 px</li>
+        <li><kbd>⌘Z</kbd> undo, <kbd>⇧⌘Z</kbd> redo</li>
+        <li><kbd>⌘D</kbd> duplicate, <kbd>⌫</kbd> delete</li>
+        <li><kbd>[</kbd> <kbd>]</kbd> smaller / bigger</li>
+        <li><kbd>Esc</kbd> deselect</li>
+      </ul>
+    </section>
+  </aside>
+</main>
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

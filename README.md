@@ -2,21 +2,22 @@
 
 <img src="docs/media/icon.png" width="128" alt="">
 
-# Apparel Designer
+# Tenzen Studio
 
-**Print effects for garment artwork. Vector in, vector out.**
+**Print effects and 3D mockups for garment artwork.**
 
 Halftone a photo into a real CMYK dot screen. Chew a logo up with ink erosion and
-grunge. Bend artwork onto a garment with four corner handles. Then export the
-whole thing as SVG your printer can actually use.
+grunge. Bend artwork onto a garment with four corner handles. Export the whole
+thing as SVG your printer can actually use, then put it on a 3D garment and save
+a GLB that is ready for a Shopify product page.
 
 Runs on your own Mac. Nothing is uploaded. No account, no subscription.
 
-### [⬇ Download for Mac](https://github.com/aditya31Sharma/apparel-designer/releases/latest/download/Apparel-Designer-mac-arm64.dmg)
+### [⬇ Download for Mac](https://github.com/aditya31Sharma/apparel-designer/releases/latest/download/Tenzen-Studio-mac-arm64.dmg)
 
 <sub>Apple Silicon · free · MIT licensed · updates itself</sub>
 
-<img src="docs/media/hero.png" alt="Apparel Designer with a photo screened into a four colour halftone">
+<img src="docs/media/hero.png" alt="Tenzen Studio with a photo screened into a four colour halftone">
 
 </div>
 
@@ -95,6 +96,22 @@ a model on your own machine. The image never leaves it.
 
 <br clear="right">
 
+### 3D Mockup
+
+<img src="docs/media/mockup.png" alt="The 3D Mockup tab: a design on a polo sweatshirt, with fabric and print controls">
+
+The second tab. Pick a garment, the same meshes the Tenzen store uses: oversized
+tee, waffle tee, henley, baby tee, layered tee, hoodie, sweatshirt, polo,
+sweatpants and three caps. Choose a colour and a fabric for each part (jersey,
+fleece, heather, acid wash, waffle, ribbed), then add designs: the front, the
+back, a sleeve, or anywhere at all, the hood or the brim included. **Current
+artwork** puts whatever is open in the Artwork tab straight onto the garment.
+
+Drag a design on the model or nudge it by the pixel. It snaps to the centre
+line and to the usual print spots, and it can go past an edge, where the fabric
+simply cuts it. **Download GLB** writes one Draco-compressed file, at the
+sharpest print size that stays under Shopify's 15MB limit.
+
 ### Everything is vector on the way out
 
 One compound path per ink inside a multiply group, so Illustrator opens four
@@ -109,7 +126,7 @@ file size before you press it.
 You do not need to know anything about code. Three steps.
 
 **1. Download it.**
-[Apparel Designer for Mac](https://github.com/aditya31Sharma/apparel-designer/releases/latest/download/Apparel-Designer-mac-arm64.dmg)
+[Tenzen Studio for Mac](https://github.com/aditya31Sharma/apparel-designer/releases/latest/download/Tenzen-Studio-mac-arm64.dmg)
 
 **2. Install it.**
 Open the file you downloaded, then drag the app icon onto the Applications
@@ -120,10 +137,10 @@ folder shown next to it. That is the whole install.
 The app is not signed by Apple, because that costs $99 a year and this is free.
 So macOS asks once, the first time only:
 
-- Open **Applications**, double-click **Apparel Designer**
+- Open **Applications**, double-click **Tenzen Studio**
 - macOS says it cannot verify the developer. Click **Done**
 - Open **System Settings → Privacy & Security**
-- Scroll down. There is a line about Apparel Designer. Click **Open Anyway**
+- Scroll down. There is a line about Tenzen Studio. Click **Open Anyway**
 - Confirm with your password or Touch ID
 
 That is it, forever. Every launch after that is a normal double-click, and the
@@ -167,10 +184,11 @@ Nothing is sent anywhere during a check. It is one request for a small file.
 |---|---|
 | Open artwork | `Cmd O`, or drag a file onto the canvas, or paste with `Cmd V` |
 | Formats in | SVG, PNG, JPEG, WebP, AVIF |
-| Formats out | SVG, and separated SVG plates |
+| Formats out | SVG, and separated SVG plates; GLB from the 3D Mockup tab |
 | Fit to screen | `Cmd 0` |
 | Actual size | `Cmd 1` |
-| Save | `Cmd S` |
+| Save | `Cmd S` (an SVG on the Artwork tab, a GLB on the 3D Mockup tab) |
+| 3D Mockup tab | `Cmd Alt 4` |
 
 **Trackpad**
 
@@ -201,11 +219,11 @@ git clone https://github.com/aditya31Sharma/apparel-designer.git
 cd apparel-designer
 npm install
 npm start                  # run it from source
-npm run dist               # build dist/Apparel-Designer-mac-arm64.dmg
+npm run dist               # build dist/Tenzen-Studio-mac-arm64.dmg
 ```
 
 ```bash
-npm test                   # 181 engine checks, no browser needed
+npm test                   # 219 engine and updater checks, no browser needed
 npm run suite              # 418 checks driving the real desktop build
 npm run bench              # timings for every heavy path
 npm run shots              # regenerate the screenshots in this README
@@ -218,7 +236,7 @@ window never appears. The app detects this and says so. Launch it from Finder, o
 clear the variable:
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE open -a "Apparel Designer"
+env -u ELECTRON_RUN_AS_NODE open -a "Tenzen Studio"
 ```
 
 ### Layout
@@ -230,7 +248,8 @@ src/doc/      document model, effect registry, the three registrations
 src/view/     viewport, overlay, control specs, panel builder, icons
 src/workers/  the effect stack and the erosion pool, off the main thread
 src/export/   geometry to SVG
-test/         181 checks that need nothing but node
+src/studio/   the 3D Mockup tab: three.js editor, garment bases, fabrics, Draco export
+test/         219 checks that need nothing but node
 docs/         the download page and the screenshots
 ```
 
@@ -449,6 +468,34 @@ Every launch that uses updated source leaves a marker behind until the renderer
 reports that it started. Finding that marker still there on the next launch means
 the update broke the app, so it is deleted, the version is blocked, and the app
 goes back to what it shipped with. `test/update.test.js` covers all of it.
+
+</details>
+
+<details>
+<summary><b>The 3D Mockup</b></summary>
+
+A separate page, `src/studio/`, that the Artwork tab loads into a frame the first
+time you open it, so the 2D side starts as fast as it always has. It is three.js
+and ES modules rather than this page's 2D canvas, vendored into
+`src/studio/vendor/` so nothing is fetched from the internet.
+
+Every garment base is the mesh the Tenzen store already uses for that product,
+Draco-compressed, with a fabric UV laid out once in tile units. They are built by
+a script outside this repo that fingerprints each source mesh (triangle count and
+bounds of every part) against the live store model and refuses to build on any
+mismatch.
+
+A print is never a floating picture. It is the garment's own triangles under the
+print, cloned, clipped to the print's rectangle, and lifted a millimetre or so
+along their normals. AI garment meshes are often double walled, a couple of
+millimetres apart, with the outer wall's normals pointing inward, so the clone
+treats triangles as two sided and keeps only the outermost layer, tested at the
+same sample points, so a fold cannot punch holes in small type.
+
+Saving runs three.js's GLTFExporter, then glTF-Transform with the Draco encoder
+compiled to WebAssembly, all in the page: prune, dedup, Draco edgebreaker with
+14-bit positions, 10-bit normals and 12-bit UVs. If the result is over 15MB the
+print textures step down in size and it tries again.
 
 </details>
 

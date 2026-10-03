@@ -1,4 +1,4 @@
-/* Apparel Designer.
+/* Tenzen Studio, the Artwork side.
  *
  * Orchestration only: the document lives in doc/model.js, the effects in
  * doc/register-effects.js, the drawing in view/viewport.js, and the heavy
@@ -1103,6 +1103,7 @@
     };
 
     window.addEventListener('paste', function (e) {
+      if (window.Mockup && window.Mockup.active()) return;
       var items = e.clipboardData && e.clipboardData.items;
       if (items) {
         for (var i = 0; i < items.length; i++) {
@@ -1120,6 +1121,7 @@
   function wireKeys() {
     window.addEventListener('keydown', function (e) {
       if (/input|textarea|select/i.test(e.target.tagName)) return;
+      if (window.Mockup && window.Mockup.active()) return;
       var meta = e.metaKey || e.ctrlKey;
 
       if (meta && e.key.toLowerCase() === 'z') {
@@ -1160,7 +1162,13 @@
     var D = window.desktop;
     if (!D) return;
     document.body.classList.add('desktop');
-    var on = D.onMenu;
+    // While the 3D Mockup tab shows, the shared shortcuts belong to it.
+    var on = function (name, fn) {
+      D.onMenu(name, function () {
+        if (window.Mockup && window.Mockup.handle(name)) return;
+        fn();
+      });
+    };
     on('open', function () { $('file').click(); });
     on('save', function () { saveSvg(false); });
     on('separations', function () { saveSvg(true); });

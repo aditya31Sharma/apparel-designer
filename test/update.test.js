@@ -179,6 +179,24 @@ t('revert drops both pointers and keeps the files', () => {
 
 /* ---------- the overlay list ---------- */
 
+t('a downloaded source older than a newly installed shell is not run', () => {
+  const ud = sandbox();
+  plantSource(ud, '2.7.0');
+  state(ud, 'active.json', { version: '2.7.0', minShell: '2.7.0' });
+  const r = U.resolveOverlay(ud, '3.0.0');
+  assert.strictEqual(r.dir, null);
+  assert.strictEqual(r.version, '3.0.0');
+  assert.strictEqual(readState(ud, 'active.json'), null);
+});
+
+t('a downloaded source equal to the shell defers to the bundle', () => {
+  const ud = sandbox();
+  plantSource(ud, '3.0.0');
+  state(ud, 'active.json', { version: '3.0.0', minShell: '3.0.0' });
+  const r = U.resolveOverlay(ud, '3.0.0');
+  assert.strictEqual(r.dir, null);
+});
+
 t('only the renderer source is ever replaced from the internet', () => {
   assert.deepStrictEqual(U.OVERLAY, ['index.html', 'style.css', 'src']);
   assert.ok(U.OVERLAY.indexOf('electron') < 0, 'the main process must not be updatable');

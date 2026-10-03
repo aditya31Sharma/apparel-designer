@@ -1,8 +1,8 @@
 {
   "name": "apparel-designer",
-  "productName": "Apparel Designer",
+  "productName": "Tenzen Studio",
   "version": "2.7.0",
-  "description": "Warp, dither and CMYK halftone screening for garment artwork. Vector in, vector out.",
+  "description": "Tenzen Studio: warp, dither and halftone garment artwork into vector SVG, then put it on a 3D garment and save a Shopify-ready GLB.",
   "main": "electron/main.js",
   "author": "Aditya Sharma",
   "license": "MIT",
