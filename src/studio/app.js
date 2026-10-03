@@ -620,13 +620,18 @@ function snap(d, kind) {
 }
 
 // ---------------- print areas ----------------
+// Canvas drawing takes colours from the same tokens as the CSS: the selection
+// box in the accent, snap guides in the snap pink, exactly as on the Artwork tab.
+function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function outlineTexture() {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 512;
   const g = c.getContext('2d');
-  g.fillStyle = 'rgba(29,78,216,0.025)';
+  g.globalAlpha = 0.04;
+  g.fillStyle = token('--accent');
   g.fillRect(0, 0, 512, 512);
-  g.strokeStyle = 'rgba(29,78,216,0.85)';
+  g.globalAlpha = 0.9;
+  g.strokeStyle = token('--accent');
   g.lineWidth = 6;
   g.setLineDash([22, 14]);
   g.strokeRect(5, 5, 502, 502);
@@ -997,19 +1002,20 @@ function drawOverlay() {
   if (f.normal.dot(camera.position.clone().sub(f.origin)) <= 0) return;
   const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) =>
     project(f.origin.clone().addScaledVector(f.right, sx * f.w / 2).addScaledVector(f.up, sy * f.h / 2).addScaledVector(f.normal, 0.01)));
-  octx.strokeStyle = '#1d4ed8';
+  const accent = token('--accent');
+  octx.strokeStyle = accent;
   octx.lineWidth = 1.5 * devicePixelRatio;
   octx.setLineDash([]);
   octx.beginPath();
   corners.forEach(([x, y], i) => (i ? octx.lineTo(x, y) : octx.moveTo(x, y)));
   octx.closePath();
   octx.stroke();
-  octx.fillStyle = '#1d4ed8';
+  octx.fillStyle = accent;
   for (const [x, y] of corners) octx.fillRect(x - 3 * devicePixelRatio, y - 3 * devicePixelRatio, 6 * devicePixelRatio, 6 * devicePixelRatio);
   if (d.mode === 'free') return;
   const B = faceBasis(d.mode);
   const depth = f.origin.dot(B.normal) + 0.02;
-  octx.strokeStyle = '#c8102e';
+  octx.strokeStyle = token('--snap');
   octx.setLineDash([6 * devicePixelRatio, 4 * devicePixelRatio]);
   const bb = state.garment.bounds;
   const span = Math.max(bb[1][1] - bb[0][1], bb[1][0] - bb[0][0]);
