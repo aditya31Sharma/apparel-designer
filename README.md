@@ -103,14 +103,24 @@ a model on your own machine. The image never leaves it.
 The second tab. Pick a garment, the same meshes the Tenzen store uses: oversized
 tee, waffle tee, henley, baby tee, layered tee, hoodie, sweatshirt, polo,
 sweatpants and three caps. Choose a colour and a fabric for each part (jersey,
-fleece, heather, acid wash, waffle, ribbed), then add designs: the front, the
-back, a sleeve, or anywhere at all, the hood or the brim included. **Current
-artwork** puts whatever is open in the Artwork tab straight onto the garment.
+**crew tee lines**, fleece, heather, acid wash, waffle, ribbed), then add designs:
+the front, the back, a sleeve, or anywhere at all, the hood or the brim included.
+**Current artwork** puts whatever is open in the Artwork tab straight onto the
+garment. Crew tee lines is the knit of the store's Crew Oversized Tees, the same
+normal map at the same size and strength, so it can go on any garment.
 
 Drag a design on the model or nudge it by the pixel. It snaps to the centre
 line and to the usual print spots, and it can go past an edge, where the fabric
-simply cuts it. **Download GLB** writes one Draco-compressed file, at the
-sharpest print size that stays under Shopify's 15MB limit.
+simply cuts it.
+
+**Store preview** (`P`) shows the file exactly as tenzen.in will: the store's own
+viewer (model-viewer 3.5.0), its lighting, shadow and white page, in three frames,
+the desktop product page, the phone and the magnified view. It updates as you edit.
+
+**Download GLB · Draco** writes the Shopify file: Draco geometry, prints as WebP,
+real size in metres, at the sharpest print size that stays under Shopify's 15MB
+limit. The preview shows what is in it: size before and after, triangles,
+textures.
 
 ### Everything is vector on the way out
 
@@ -189,6 +199,7 @@ Nothing is sent anywhere during a check. It is one request for a small file.
 | Actual size | `Cmd 1` |
 | Save | `Cmd S` (an SVG on the Artwork tab, a GLB on the 3D Mockup tab) |
 | 3D Mockup tab | `Cmd Alt 4` |
+| Store preview, on the 3D Mockup tab | `P` (`Esc` steps back out) |
 
 **Trackpad**
 
@@ -493,9 +504,19 @@ treats triangles as two sided and keeps only the outermost layer, tested at the
 same sample points, so a fold cannot punch holes in small type.
 
 Saving runs three.js's GLTFExporter, then glTF-Transform with the Draco encoder
-compiled to WebAssembly, all in the page: prune, dedup, Draco edgebreaker with
-14-bit positions, 10-bit normals and 12-bit UVs. If the result is over 15MB the
-print textures step down in size and it tries again.
+compiled to WebAssembly, all in the page: prune, dedup, prints re-encoded as WebP
+(`EXT_texture_webp`, as the store's own models carry them), Draco edgebreaker with
+14-bit positions, 10-bit normals and 12-bit UVs. Fabric normal maps go in as their
+original files rather than the exporter's re-encode, which blurs a knit. If the
+result is over 15MB the print textures step down in size and it tries again.
+
+The Store preview renders that same file with the store's model-viewer build,
+vendored byte for byte, and the product page's attributes copied from the live
+theme (`environment-image="neutral"`, `exposure="1.05"`, `shadow-intensity="0.4"`,
+`shadow-softness="1"`, auto-rotate, vertical angle locked at 90 degrees). Its Draco
+decoder is pointed at the app's own copy. The crew fabric was checked against the
+live Crew Oversized Tee Black and White in that viewer: same lines, brightness
+within one percent.
 
 </details>
 

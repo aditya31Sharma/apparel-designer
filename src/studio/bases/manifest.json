@@ -9,12 +9,12 @@
     "Collar"
    ],
    "defaultColors": {
-    "Body": "#141414",
-    "Collar": "#141414"
+    "Body": "#101015",
+    "Collar": "#101015"
    },
    "defaultFabrics": {
-    "Body": "jersey",
-    "Collar": "ribbed"
+    "Body": "crew",
+    "Collar": "crewCollar"
    },
    "cmPerUnit": 40,
    "liveProduct": "Crew Oversized Tee Black",

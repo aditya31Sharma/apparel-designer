@@ -5,7 +5,9 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SurfaceIndex, buildDecalGeometry } from './decal.js';
-import { compressGLB } from './vendor/draco-export.js';
+import { optimizeGLB } from './vendor/draco-export.js';
+import { CREW_FABRICS, crewSheen } from './crew.js';
+import { StorePreview, describe } from './preview.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,6 +37,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 const FABRICS = {
   plain: { label: 'Plain' },
   jersey: { label: 'Jersey', normal: 'fabrics/jersey_normal.jpg', repeat: 2.0, strength: 0.55 },
+  ...CREW_FABRICS,
   fleece: { label: 'Fleece', normal: 'fabrics/fleece_normal.jpg', repeat: 0.55, strength: 0.35 },
   heather: { label: 'Heather', normal: 'fabrics/fleece_normal.jpg', repeat: 0.55, strength: 0.3, mask: 'fabrics/heather_mask.png', maskRepeat: 1.0, maskAmount: 0.55 },
   acid: { label: 'Acid wash', normal: 'fabrics/jersey_normal.jpg', repeat: 2.0, strength: 0.4, mask: 'fabrics/acid_mask.jpg', maskRepeat: 1 / 16, maskAmount: 0.42 },
@@ -124,6 +127,9 @@ async function normalTexture(url) {
   if (!normalTexCache.has(url)) {
     normalTexCache.set(url, loadImage(url).then((img) => {
       const t = new THREE.Texture(img);
+      // glTF's orientation, so the saved file can carry this exact image (see sourceBytes)
+      t.flipY = false;
+      t.name = url;
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.colorSpace = THREE.NoColorSpace;
       t.anisotropy = 8;
@@ -133,6 +139,13 @@ async function normalTexture(url) {
     }));
   }
   return normalTexCache.get(url);
+}
+const sourceCache = new Map();
+function sourceBytes(url) {
+  if (!sourceCache.has(url)) {
+    sourceCache.set(url, fetch(url).then(async (r) => ({ bytes: new Uint8Array(await r.arrayBuffer()), mime: url.endsWith('.png') ? 'image/png' : 'image/jpeg' })));
+  }
+  return sourceCache.get(url);
 }
 
 const maskCanvasCache = new Map();
@@ -167,7 +180,11 @@ async function maskTexture(url, hex, amount) {
 
 async function applyFabric(mesh, part) {
   const fab = FABRICS[part.fabric] || FABRICS.plain;
-  const mat = new THREE.MeshStandardMaterial({ roughness: 0.93, metalness: 0, side: THREE.DoubleSide, name: mesh.userData.part });
+  const sheen = fab.sheen ? crewSheen(part.color, fab.sheen) : null;
+  const mat = sheen
+    ? new THREE.MeshPhysicalMaterial({ roughness: sheen.roughness, metalness: 0, side: THREE.DoubleSide, name: mesh.userData.part,
+      specularColor: new THREE.Color(sheen.specular, sheen.specular, sheen.specular) })
+    : new THREE.MeshStandardMaterial({ roughness: 0.93, metalness: 0, side: THREE.DoubleSide, name: mesh.userData.part });
   if (fab.mask) {
     const amount = fab.maskAmount * (fab === FABRICS.acid ? state.contrast : 1);
     const t = (await maskTexture(fab.mask, part.color, amount)).clone();
@@ -180,12 +197,14 @@ async function applyFabric(mesh, part) {
   }
   if (fab.normal && state.strength > 0) {
     const t = (await normalTexture(fab.normal)).clone();
-    const r = fab.repeat * state.texScale;
-    t.repeat.set(r, r);
+    const r = fab.repeat * state.texScale * (fab.cmRef ? state.garment.cmPerUnit / fab.cmRef : 1);
+    t.repeat.set(r, fab.flipV ? -r : r);
     t.needsUpdate = true;
     mat.normalMap = t;
     const s = fab.strength * state.strength;
-    mat.normalScale.set(s, s);
+    // y negated as three's GLTFLoader does for a glTF normal map without tangents,
+    // which is how the store will draw it
+    mat.normalScale.set(s, -s);
   }
   const old = mesh.material;
   mesh.material = mat;
@@ -195,8 +214,12 @@ async function applyFabric(mesh, part) {
 let fabricQueue = Promise.resolve();
 function refreshFabrics() {
   fabricQueue = fabricQueue.then(() => Promise.all(state.meshes.map((m) => applyFabric(m, state.parts[m.userData.part]))));
+  changed();
   return fabricQueue;
 }
+// the store preview rebuilds after any edit (or next time it opens)
+let preview = null;
+function changed() { if (preview) preview.stale(); }
 
 // ---------------- garments ----------------
 async function loadGarment(id) {
@@ -770,6 +793,7 @@ window.addEventListener('keydown', (ev) => {
     if (k === 'o') { ev.preventDefault(); pickFiles(null); return; }
     if (k === '0') { ev.preventDefault(); frameCamera('front'); return; }
   }
+  if (!mod && k === 'p') { preview.setMode(preview.visible ? 'edit' : (preview.lastStage || 'page')); return; }
   const d = state.selected;
   if (!d) return;
   if (mod && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateDecal(d); return; }
@@ -820,6 +844,7 @@ function pushHistory() {
   history.stack.push(s);
   if (history.stack.length > 120) history.stack.shift();
   history.pos = history.stack.length - 1;
+  changed();
 }
 let histTimer = null;
 function historyDebounced() { clearTimeout(histTimer); histTimer = setTimeout(pushHistory, 350); }
@@ -848,6 +873,7 @@ function restore(s) {
   next.forEach(rebuildDecal);
   state.selected = next.find((d) => d.id === data.selected) || null;
   renderDecalList(); renderInspector(); updateZoneVisibility();
+  changed();
 }
 function undo() { if (history.pos > 0) { history.pos--; restore(history.stack[history.pos]); } }
 function redo() { if (history.pos < history.stack.length - 1) { history.pos++; restore(history.stack[history.pos]); } }
@@ -985,7 +1011,8 @@ $('texScale').addEventListener('change', refreshFabrics);
 $('contrast').addEventListener('input', () => { state.contrast = $('contrast').value / 100; $('contrastOut').textContent = `${$('contrast').value}%`; });
 $('contrast').addEventListener('change', refreshFabrics);
 $('showZones').addEventListener('change', () => { state.showZones = $('showZones').checked; updateZoneVisibility(); });
-document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => frameCamera(b.dataset.view)));
+document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => (preview.visible ? preview.orbit(b.dataset.view) : frameCamera(b.dataset.view))));
+$('exportRes').addEventListener('change', changed);
 $('garment').addEventListener('change', () => { state.keepColors = false; loadGarment($('garment').value); });
 
 // ---------------- overlay (selection box + snap guides) ----------------
@@ -1037,42 +1064,67 @@ function scaledTexture(img, maxSide) {
   t.userData.mimeType = 'image/png';
   return t;
 }
+/* The Shopify file, the same for Download and the Store preview: garment and
+ * prints in metres (so AR shows the real size), prints as WebP, Draco geometry,
+ * and the print size stepped down until the file is under 15 MB. Builds run one
+ * at a time. */
+let buildQueue = Promise.resolve();
+function buildShopifyFile(onStep) {
+  const job = buildQueue.then(async () => {
+    await fabricQueue;
+    const choice = $('exportRes').value;
+    const ladder = choice === 'auto' ? [4096, 3072, 2560, 2048, 1536, 1024] : [parseInt(choice, 10)];
+    let out = null, res = 0;
+    for (res of ladder) {
+      if (onStep) onStep(res);
+      out = await buildGLB(res);
+      if (out.glb.byteLength <= SHOPIFY_LIMIT * 0.97) break;
+    }
+    const b = state.garment.bounds;
+    return { ...out, res, garment: state.garment.id, heightCm: (b[1][1] - b[0][1]) * state.garment.cmPerUnit };
+  });
+  buildQueue = job.catch(() => {});
+  return job;
+}
+
+function reportToast(verb, built) {
+  const d = describe(built.report, built);
+  if (built.report.bytes > SHOPIFY_LIMIT) toast(`${verb}, ${d.size}. Over Shopify's 15 MB limit even with prints at ${built.res} px: use fewer or smaller designs.`, true, 9000);
+  else toast(`${verb}, ${d.size}: Draco compressed (${d.was} before), under 15 MB. ${d.line}.`, false, 6000);
+}
+
+async function saveShopifyFile(built) {
+  const out = built.glb;
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  const name = `${built.garment}-${stamp}.glb`;
+  let verb;
+  if (DESKTOP && HOST.Mockup && HOST.Mockup.saveBinary) {
+    const saved = await HOST.Mockup.saveBinary(name, out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength));
+    if (!saved) return false;   // the save dialog was cancelled
+    verb = 'Saved';
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([out], { type: 'model/gltf-binary' }));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    verb = 'Downloaded';
+  }
+  reportToast(verb, built);
+  return true;
+}
+
 async function exportGLB({ download = true } = {}) {
   const btn = $('exportBtn');
   btn.disabled = true;
   const label = btn.textContent;
   btn.textContent = 'Building…';
   try {
-    await fabricQueue;
-    const choice = $('exportRes').value;
-    const ladder = choice === 'auto' ? [4096, 3072, 2560, 2048, 1536, 1024] : [parseInt(choice, 10)];
-    let out = null, res = 0;
-    for (res of ladder) {
-      btn.textContent = `Building ${res}px…`;
-      out = await buildGLB(res);
-      if (out.byteLength <= SHOPIFY_LIMIT * 0.97) break;
-    }
-    const mb = (out.byteLength / 1024 / 1024).toFixed(2);
-    let verb = 'Built';
-    if (download) {
-      const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-      const name = `${state.garment.id}-${stamp}.glb`;
-      if (DESKTOP && HOST.Mockup && HOST.Mockup.saveBinary) {
-        const saved = await HOST.Mockup.saveBinary(name, out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength));
-        if (!saved) return out;   // the save dialog was cancelled
-        verb = 'Saved';
-      } else {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([out], { type: 'model/gltf-binary' }));
-        a.download = name;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-        verb = 'Downloaded';
-      }
-    }
-    if (out.byteLength > SHOPIFY_LIMIT) toast(`${verb}, ${mb} MB. Over Shopify's 15 MB limit even at ${res}px: use fewer or smaller designs.`, true, 9000);
-    else toast(`${verb}, ${mb} MB with Draco (prints at ${res}px). Ready for Shopify.`);
-    return out;
+    // what the Store preview is showing, when nothing changed since, is the file
+    const built = (preview && preview.fresh()) || await buildShopifyFile((res) => { btn.textContent = `Building ${res}px…`; });
+    if (download) await saveShopifyFile(built);
+    else reportToast('Built', built);
+    return built.glb;
   } catch (e) {
     console.error(e);
     toast(`Export failed: ${e.message}`, true, 9000);
@@ -1086,6 +1138,7 @@ async function exportGLB({ download = true } = {}) {
 async function buildGLB(res) {
   const group = new THREE.Group();
   group.name = `tenzen-${state.garment.id}`;
+  group.scale.setScalar(state.garment.cmPerUnit / 100);
   for (const m of state.meshes) {
     const c = new THREE.Mesh(m.geometry, m.material);
     c.name = m.userData.part;
@@ -1106,7 +1159,12 @@ async function buildGLB(res) {
   });
   try {
     const raw = await new GLTFExporter().parseAsync(group, { binary: true, maxTextureSize: 4096 });
-    return await compressGLB(raw, './vendor/draco_encoder.wasm');
+    const normalSources = {};
+    for (const m of state.meshes) {
+      const url = m.material.normalMap?.name;
+      if (url) normalSources[m.material.name] = await sourceBytes(url);
+    }
+    return await optimizeGLB(raw, { wasmUrl: './vendor/draco_encoder.wasm', normalSources });
   } finally {
     temp.forEach((x) => x.dispose());
   }
@@ -1124,11 +1182,24 @@ function cycleBackdrop() {
 // ---------------- loop + boot ----------------
 function tick() {
   processMove();
-  controls.update();
-  renderer.render(scene, camera);
-  drawOverlay();
+  if (!preview.visible) {   // the store preview has its own renderer; the editor rests
+    controls.update();
+    renderer.render(scene, camera);
+    drawOverlay();
+  }
   requestAnimationFrame(tick);
 }
+
+preview = new StorePreview($('stage'), {
+  build: () => buildShopifyFile(),
+  download: saveShopifyFile,
+  limit: SHOPIFY_LIMIT,
+  onMode: (mode) => {
+    document.querySelectorAll('[data-vm]').forEach((b) => b.classList.toggle('on', b.dataset.vm === mode));
+    $('stage').classList.toggle('previewing', mode !== 'edit');
+  },
+});
+document.querySelectorAll('[data-vm]').forEach((b) => b.addEventListener('click', () => preview.setMode(b.dataset.vm)));
 
 async function boot() {
   resize();
@@ -1148,7 +1219,7 @@ boot().catch((e) => { console.error(e); setStatus(`Failed to start: ${e.message}
 // What the page around this one calls (menu routing), plus the test harness hooks.
 window.studio = {
   state, camera, loadGarment, exportGLB, frameCamera, snap, setMode, rebuildDecal, refreshFabrics, renderParts,
-  undo, redo, addArtwork, cycleBackdrop,
+  undo, redo, addArtwork, cycleBackdrop, preview, buildShopifyFile,
   save: () => exportGLB(),
   addAnywhere: () => pickFiles(null),
   fit: () => frameCamera('front'),

@@ -34,7 +34,7 @@
       <option value="1536">1536</option>
     </select>
   </label>
-  <button id="exportBtn" class="primary">Download GLB</button>
+  <button id="exportBtn" class="primary" title="Shopify-ready: Draco compressed geometry, prints as WebP, real size, under 15 MB">Download GLB · Draco</button>
 </header>
 
 <main class="layout">
@@ -71,6 +71,14 @@
   </aside>
 
   <section class="stage" id="stage">
+    <div class="viewmode" role="group" aria-label="View">
+      <button data-vm="edit" class="on" title="Place and edit designs">Edit</button>
+      <span class="vm-sep"></span>
+      <span class="vm-label">Store preview</span>
+      <button data-vm="page" title="The product page on a computer: the file in the store's own viewer and lighting">Product page</button>
+      <button data-vm="phone" title="The product page on a phone">Phone</button>
+      <button data-vm="zoom" title="The magnified view the magnify button opens">Magnified</button>
+    </div>
     <canvas id="view"></canvas>
     <canvas id="overlay"></canvas>
     <div class="status" id="status">Loading…</div>
@@ -145,6 +153,7 @@
         <li><kbd>⌘Z</kbd> undo, <kbd>⇧⌘Z</kbd> redo</li>
         <li><kbd>⌘D</kbd> duplicate, <kbd>⌫</kbd> delete</li>
         <li><kbd>[</kbd> <kbd>]</kbd> smaller / bigger</li>
+        <li><kbd>P</kbd> store preview on / off</li>
         <li><kbd>Esc</kbd> deselect</li>
       </ul>
     </section>
