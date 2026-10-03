@@ -1,6 +1,6 @@
 {
-  "version": "2.7.0",
-  "minShell": "2.7.0",
-  "tag": "v2.7.0",
-  "notes": "One Install fonts button: every font in Adobe Fonts and Downloads, zipped or not, that is not installed yet goes into your Fonts folder. The text tool is gone. Needs a fresh download this once."
+  "version": "3.0.0",
+  "minShell": "3.0.0",
+  "tag": "v3.0.0",
+  "notes": "Apparel Designer is now Tenzen Studio, with a 3D Mockup tab: put designs on Tenzen garments and save a GLB for Shopify. Needs a fresh download this once."
 }
