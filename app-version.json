@@ -1,6 +1,6 @@
 {
-  "version": "3.0.0",
+  "version": "3.0.1",
   "minShell": "3.0.0",
-  "tag": "v3.0.0",
-  "notes": "Apparel Designer is now Tenzen Studio, with a 3D Mockup tab: put designs on Tenzen garments and save a GLB for Shopify. Needs a fresh download this once."
+  "tag": "v3.0.1",
+  "notes": "3D Mockup: Store preview shows your GLB in the store's own viewer and lighting (product page, phone, magnified). New fabric: Crew tee lines, the crew tee's knit for any garment. Downloads are Draco with WebP prints at real size, with a size report."
 }
