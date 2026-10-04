@@ -96,6 +96,10 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 11p
 .swatches { display: flex; flex-wrap: wrap; gap: 4px; }
 .swatches button { width: 16px; height: 16px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--swatch-line); }
 .swatches button:hover { border-color: var(--ink); }
+.swatches button.on { border-color: transparent; box-shadow: 0 0 0 1.5px var(--accent); }
+/* acid wash: a toggle over the fabric, and the store's acid colours as swatches */
+.part .acid-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.swatches.acid button { background-color: var(--field); background-size: cover; background-position: center; }
 
 /* ---------- add design ---------- */
 .add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }

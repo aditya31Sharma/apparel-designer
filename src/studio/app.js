@@ -7,6 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SurfaceIndex, buildDecalGeometry } from './decal.js';
 import { optimizeGLB } from './vendor/draco-export.js';
 import { CREW_FABRICS, crewSheen } from './crew.js';
+import { ACID_MASK, ACID_REPEAT, ACID_CM_REF, ACID_DEFAULT, ACID_PRESETS, ACID_CREW_SHEEN, acidPixels, acidSwatch } from './acid.js';
 import { StorePreview, describe } from './preview.js';
 
 const $ = (id) => document.getElementById(id);
@@ -40,7 +41,6 @@ const FABRICS = {
   ...CREW_FABRICS,
   fleece: { label: 'Fleece', normal: 'fabrics/fleece_normal.jpg', repeat: 0.55, strength: 0.35 },
   heather: { label: 'Heather', normal: 'fabrics/fleece_normal.jpg', repeat: 0.55, strength: 0.3, mask: 'fabrics/heather_mask.png', maskRepeat: 1.0, maskAmount: 0.55 },
-  acid: { label: 'Acid wash', normal: 'fabrics/jersey_normal.jpg', repeat: 2.0, strength: 0.4, mask: 'fabrics/acid_mask.jpg', maskRepeat: 1 / 16, maskAmount: 0.42 },
   waffle: { label: 'Waffle', normal: 'fabrics/waffle_normal.png', repeat: 1.2, strength: 0.7 },
   ribbed: { label: 'Ribbed', normal: 'fabrics/ribbed_normal.png', repeat: 1.6, strength: 0.7 },
 };
@@ -149,8 +149,8 @@ function sourceBytes(url) {
 }
 
 const maskCanvasCache = new Map();
-async function maskTexture(url, hex, amount) {
-  const key = `${url}|${hex}|${amount.toFixed(3)}`;
+async function maskTexture(url, hex, amount, acid = false) {
+  const key = `${url}|${hex}|${amount.toFixed(3)}|${acid}`;
   if (maskCanvasCache.has(key)) return maskCanvasCache.get(key);
   const img = await loadImage(url);
   const c = document.createElement('canvas');
@@ -158,13 +158,17 @@ async function maskTexture(url, hex, amount) {
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
   const d = ctx.getImageData(0, 0, c.width, c.height);
-  const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  // mask 0.5 = chosen color; above lightens toward white, below darkens toward black
-  for (let i = 0; i < d.data.length; i += 4) {
-    const m = (d.data[i] / 255 - 0.5) * 2 * amount;
-    for (let k = 0; k < 3; k++) {
-      const c0 = rgb[k];
-      d.data[i + k] = m >= 0 ? c0 + (255 - c0) * Math.min(m, 1) : c0 * (1 + Math.max(m, -1));
+  if (acid) {
+    acidPixels(d.data, hex, amount);
+  } else {
+    const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    // mask 0.5 = chosen color; above lightens toward white, below darkens toward black
+    for (let i = 0; i < d.data.length; i += 4) {
+      const m = (d.data[i] / 255 - 0.5) * 2 * amount;
+      for (let k = 0; k < 3; k++) {
+        const c0 = rgb[k];
+        d.data[i + k] = m >= 0 ? c0 + (255 - c0) * Math.min(m, 1) : c0 * (1 + Math.max(m, -1));
+      }
     }
   }
   ctx.putImageData(d, 0, 0);
@@ -180,14 +184,22 @@ async function maskTexture(url, hex, amount) {
 
 async function applyFabric(mesh, part) {
   const fab = FABRICS[part.fabric] || FABRICS.plain;
-  const sheen = fab.sheen ? crewSheen(part.color, fab.sheen) : null;
+  const sheen = !fab.sheen ? null : part.acid ? ACID_CREW_SHEEN[fab.sheen] : crewSheen(part.color, fab.sheen);
   const mat = sheen
     ? new THREE.MeshPhysicalMaterial({ roughness: sheen.roughness, metalness: 0, side: THREE.DoubleSide, name: mesh.userData.part,
       specularColor: new THREE.Color(sheen.specular, sheen.specular, sheen.specular) })
     : new THREE.MeshStandardMaterial({ roughness: 0.93, metalness: 0, side: THREE.DoubleSide, name: mesh.userData.part });
-  if (fab.mask) {
-    const amount = fab.maskAmount * (fab === FABRICS.acid ? state.contrast : 1);
-    const t = (await maskTexture(fab.mask, part.color, amount)).clone();
+  // acid wash is a layer over the fabric: the fabric keeps its normal map, the wash
+  // takes the colour (over heather too, whose own mottle it replaces)
+  if (part.acid) {
+    const t = (await maskTexture(ACID_MASK, part.color, (part.acidAmount ?? ACID_DEFAULT) * state.contrast, true)).clone();
+    const r = ACID_REPEAT * state.garment.cmPerUnit / ACID_CM_REF;
+    t.repeat.set(r, r);
+    t.needsUpdate = true;
+    mat.map = t;
+    mat.color.set(0xffffff);
+  } else if (fab.mask) {
+    const t = (await maskTexture(fab.mask, part.color, fab.maskAmount)).clone();
     t.repeat.set(fab.maskRepeat, fab.maskRepeat);
     t.needsUpdate = true;
     mat.map = t;
@@ -238,7 +250,7 @@ async function loadGarment(id) {
   state.parts = {};
   for (const name of g.parts) {
     state.parts[name] = prevParts[name] && state.keepColors ? prevParts[name]
-      : { color: g.defaultColors[name] || '#808080', fabric: (g.defaultFabrics || {})[name] || 'jersey' };
+      : { color: g.defaultColors[name] || '#808080', fabric: (g.defaultFabrics || {})[name] || 'jersey', acid: false, acidAmount: ACID_DEFAULT };
   }
   state.index = new SurfaceIndex(state.meshes);
   await refreshFabrics();
@@ -893,20 +905,45 @@ function renderParts() {
     row.innerHTML = `<div class="part-name">${name}</div>
       <div class="color-cell"><input type="color" value="${p.color}" aria-label="${name} color"><input class="hex" value="${p.color}" aria-label="${name} hex" spellcheck="false">
       <select aria-label="${name} fabric">${Object.entries(FABRICS).map(([k, f]) => `<option value="${k}" ${k === p.fabric ? 'selected' : ''}>${f.label}</option>`).join('')}</select></div>
-      <div class="swatches">${SWATCHES.map((c) => `<button style="background:${c}" data-c="${c}" title="${c}" aria-label="${c}"></button>`).join('')}</div>`;
-    const [colorIn, hexIn] = row.querySelectorAll('input');
+      <div class="swatches solid">${SWATCHES.map((c) => `<button style="background:${c}" data-c="${c}" title="${c}" aria-label="${c}"></button>`).join('')}</div>
+      <div class="acid-row">
+        <label class="toggle" title="Acid wash over the fabric, in this colour"><input type="checkbox" class="acid-on" ${p.acid ? 'checked' : ''}> Acid wash</label>
+        <div class="swatches acid">${ACID_PRESETS.map((a, i) => `<button data-acid="${i}" title="${a.name} (${a.from})" aria-label="${a.name}"></button>`).join('')}</div>
+      </div>`;
+    const [colorIn, hexIn] = row.querySelectorAll('.color-cell input');
     const fabSel = row.querySelector('select');
-    const setColor = (c) => { p.color = c; colorIn.value = c; hexIn.value = c; refreshFabrics(); };
+    const acidOn = row.querySelector('.acid-on');
+    const acidBtns = [...row.querySelectorAll('[data-acid]')];
+    const markAcid = () => acidBtns.forEach((b) => {
+      const a = ACID_PRESETS[b.dataset.acid];
+      b.classList.toggle('on', p.acid && p.color === a.hex && p.acidAmount === a.amount);
+    });
+    const setColor = (c) => { p.color = c; colorIn.value = c; hexIn.value = c; markAcid(); refreshFabrics(); };
     colorIn.addEventListener('input', () => setColor(colorIn.value));
     hexIn.addEventListener('change', () => { const v = hexIn.value.trim(); if (/^#?[0-9a-f]{6}$/i.test(v)) setColor(v.startsWith('#') ? v : '#' + v); else hexIn.value = p.color; });
-    fabSel.addEventListener('change', () => { p.fabric = fabSel.value; refreshFabrics(); updateContrastRow(); });
-    row.querySelectorAll('.swatches button').forEach((b) => b.addEventListener('click', () => setColor(b.dataset.c)));
+    fabSel.addEventListener('change', () => { p.fabric = fabSel.value; refreshFabrics(); });
+    row.querySelectorAll('.swatches.solid button').forEach((b) => b.addEventListener('click', () => setColor(b.dataset.c)));
+    acidOn.addEventListener('change', () => { p.acid = acidOn.checked; markAcid(); refreshFabrics(); updateContrastRow(); });
+    // an acid colour is the colour and the wash together
+    acidBtns.forEach((b) => b.addEventListener('click', () => {
+      const a = ACID_PRESETS[b.dataset.acid];
+      p.acid = true; p.acidAmount = a.amount; acidOn.checked = true;
+      setColor(a.hex);
+      updateContrastRow();
+    }));
+    acidSwatchImages().then((urls) => acidBtns.forEach((b) => { b.style.backgroundImage = `url(${urls[b.dataset.acid]})`; }));
+    markAcid();
     host.appendChild(row);
   }
   updateContrastRow();
 }
+let acidSwatchCache = null;
+function acidSwatchImages() {
+  if (!acidSwatchCache) acidSwatchCache = loadImage(ACID_MASK).then((img) => ACID_PRESETS.map((a) => acidSwatch(img, a)));
+  return acidSwatchCache;
+}
 function updateContrastRow() {
-  $('contrastRow').hidden = !Object.values(state.parts).some((p) => p.fabric === 'acid');
+  $('contrastRow').hidden = !Object.values(state.parts).some((p) => p.acid);
 }
 
 function renderAddButtons() {
@@ -1219,7 +1256,7 @@ boot().catch((e) => { console.error(e); setStatus(`Failed to start: ${e.message}
 // What the page around this one calls (menu routing), plus the test harness hooks.
 window.studio = {
   state, camera, loadGarment, exportGLB, frameCamera, snap, setMode, rebuildDecal, refreshFabrics, renderParts,
-  undo, redo, addArtwork, cycleBackdrop, preview, buildShopifyFile,
+  undo, redo, addArtwork, cycleBackdrop, preview, buildShopifyFile, acidPresets: ACID_PRESETS,
   save: () => exportGLB(),
   addAnywhere: () => pickFiles(null),
   fit: () => frameCamera('front'),

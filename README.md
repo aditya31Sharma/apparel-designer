@@ -103,11 +103,16 @@ a model on your own machine. The image never leaves it.
 The second tab. Pick a garment, the same meshes the Tenzen store uses: oversized
 tee, waffle tee, henley, baby tee, layered tee, hoodie, sweatshirt, polo,
 sweatpants and three caps. Choose a colour and a fabric for each part (jersey,
-**crew tee lines**, fleece, heather, acid wash, waffle, ribbed), then add designs:
-the front, the back, a sleeve, or anywhere at all, the hood or the brim included.
-**Current artwork** puts whatever is open in the Artwork tab straight onto the
-garment. Crew tee lines is the knit of the store's Crew Oversized Tees, the same
-normal map at the same size and strength, so it can go on any garment.
+**crew tee lines**, fleece, heather, waffle, ribbed), then add designs: the front,
+the back, a sleeve, or anywhere at all, the hood or the brim included. **Current
+artwork** puts whatever is open in the Artwork tab straight onto the garment.
+Crew tee lines is the knit of the store's Crew Oversized Tees, the same normal map
+at the same size and strength, so it can go on any garment.
+
+**Acid wash** is a layer over the fabric, not a fabric: tick it for any colour, or
+pick one of the store's acid colours (Acid Black, Blue and Red from the crew tees,
+the Stand Unshaken hoodie's black, the Absolute Cinema waffle's grey). A fleece
+hoodie keeps its fleece under the wash.
 
 Drag a design on the model or nudge it by the pixel. It snaps to the centre
 line and to the usual print spots, and it can go past an edge, where the fabric
@@ -517,6 +522,12 @@ theme (`environment-image="neutral"`, `exposure="1.05"`, `shadow-intensity="0.4"
 decoder is pointed at the app's own copy. The crew fabric was checked against the
 live Crew Oversized Tee Black and White in that viewer: same lines, brightness
 within one percent.
+
+Acid wash recolours a grey mottle (`fabrics/acid_mask.jpg`) by lifting each
+blotch's lightness toward white while keeping its hue, so an Acid Blue blotch is a
+lighter blue as on the store's tees. Each acid colour is a base colour and a wash
+strength fitted to its live product's texture sampled over the garment (`acid.js`);
+in the store viewer they land within a few percent of the live tees.
 
 </details>
 
