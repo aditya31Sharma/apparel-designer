@@ -1,6 +1,6 @@
 {
-  "version": "3.0.1",
+  "version": "3.0.2",
   "minShell": "3.0.0",
-  "tag": "v3.0.1",
-  "notes": "3D Mockup: Store preview shows your GLB in the store's own viewer and lighting (product page, phone, magnified). New fabric: Crew tee lines, the crew tee's knit for any garment. Downloads are Draco with WebP prints at real size, with a size report."
+  "tag": "v3.0.2",
+  "notes": "3D Mockup: acid wash is now a layer over any fabric. Tick Acid wash for any colour, or pick one of the store's acid colours (black, blue, red, the hoodie's black, the waffle's grey). A fleece hoodie can be acid washed."
 }
