@@ -1,6 +1,6 @@
 {
-  "version": "3.0.2",
+  "version": "3.0.3",
   "minShell": "3.0.0",
-  "tag": "v3.0.2",
-  "notes": "3D Mockup: acid wash is now a layer over any fabric. Tick Acid wash for any colour, or pick one of the store's acid colours (black, blue, red, the hoodie's black, the waffle's grey). A fleece hoodie can be acid washed."
+  "tag": "v3.0.3",
+  "notes": "3D Mockup: new garment, the zip hoodie, in black and in gray, with the zipper as its own part."
 }
