@@ -181,6 +181,70 @@
    ]
   },
   {
+   "id": "zip-hoodie-black",
+   "label": "Oversized Zip Hoodie Black",
+   "file": "bases/zip-hoodie-black.glb",
+   "parts": [
+    "Body",
+    "Zipper"
+   ],
+   "defaultColors": {
+    "Body": "#151616",
+    "Zipper": "#c9c9c9"
+   },
+   "defaultFabrics": {
+    "Body": "fleece",
+    "Zipper": "plain"
+   },
+   "cmPerUnit": 45,
+   "liveProduct": null,
+   "tile": 0.25,
+   "bounds": [
+    [
+     -0.8766,
+     -0.9492,
+     -0.4156
+    ],
+    [
+     0.8766,
+     0.9492,
+     0.4156
+    ]
+   ]
+  },
+  {
+   "id": "zip-hoodie-gray",
+   "label": "Oversized Zip Hoodie Gray",
+   "file": "bases/zip-hoodie-black.glb",
+   "parts": [
+    "Body",
+    "Zipper"
+   ],
+   "defaultColors": {
+    "Body": "#a5a5a6",
+    "Zipper": "#c9c9c9"
+   },
+   "defaultFabrics": {
+    "Body": "heather",
+    "Zipper": "plain"
+   },
+   "cmPerUnit": 45,
+   "liveProduct": null,
+   "tile": 0.25,
+   "bounds": [
+    [
+     -0.8766,
+     -0.9492,
+     -0.4156
+    ],
+    [
+     0.8766,
+     0.9492,
+     0.4156
+    ]
+   ]
+  },
+  {
    "id": "sweatshirt",
    "label": "Oversized Sweatshirt",
    "file": "bases/sweatshirt.glb",

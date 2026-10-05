@@ -300,6 +300,118 @@
    "h": 0.9
   }
  ],
+ "zip-hoodie-black": [
+  {
+   "id": "lchest",
+   "label": "Left chest logo",
+   "face": "front",
+   "cx": 0.24,
+   "cy": 0.42,
+   "w": 0.2,
+   "h": 0.2
+  },
+  {
+   "id": "rchest",
+   "label": "Right chest logo",
+   "face": "front",
+   "cx": -0.24,
+   "cy": 0.42,
+   "w": 0.2,
+   "h": 0.2
+  },
+  {
+   "id": "back",
+   "label": "Back",
+   "face": "back",
+   "cx": 0,
+   "cy": 0.05,
+   "w": 0.9,
+   "h": 1.05
+  },
+  {
+   "id": "hood",
+   "label": "Hood back",
+   "face": "back",
+   "cx": 0,
+   "cy": 0.88,
+   "w": 0.3,
+   "h": 0.14
+  },
+  {
+   "id": "lsleeve",
+   "label": "Left sleeve",
+   "face": "left",
+   "cx": 0,
+   "cy": -0.1,
+   "w": 0.24,
+   "h": 0.9
+  },
+  {
+   "id": "rsleeve",
+   "label": "Right sleeve",
+   "face": "right",
+   "cx": 0,
+   "cy": -0.1,
+   "w": 0.24,
+   "h": 0.9
+  }
+ ],
+ "zip-hoodie-gray": [
+  {
+   "id": "lchest",
+   "label": "Left chest logo",
+   "face": "front",
+   "cx": 0.24,
+   "cy": 0.42,
+   "w": 0.2,
+   "h": 0.2
+  },
+  {
+   "id": "rchest",
+   "label": "Right chest logo",
+   "face": "front",
+   "cx": -0.24,
+   "cy": 0.42,
+   "w": 0.2,
+   "h": 0.2
+  },
+  {
+   "id": "back",
+   "label": "Back",
+   "face": "back",
+   "cx": 0,
+   "cy": 0.05,
+   "w": 0.9,
+   "h": 1.05
+  },
+  {
+   "id": "hood",
+   "label": "Hood back",
+   "face": "back",
+   "cx": 0,
+   "cy": 0.88,
+   "w": 0.3,
+   "h": 0.14
+  },
+  {
+   "id": "lsleeve",
+   "label": "Left sleeve",
+   "face": "left",
+   "cx": 0,
+   "cy": -0.1,
+   "w": 0.24,
+   "h": 0.9
+  },
+  {
+   "id": "rsleeve",
+   "label": "Right sleeve",
+   "face": "right",
+   "cx": 0,
+   "cy": -0.1,
+   "w": 0.24,
+   "h": 0.9
+  }
+ ],
  "sweatshirt": [
   {
    "id": "front",

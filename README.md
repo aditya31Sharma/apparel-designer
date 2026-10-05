@@ -101,7 +101,8 @@ a model on your own machine. The image never leaves it.
 <img src="docs/media/mockup.png" alt="The 3D Mockup tab: a design on a polo sweatshirt, with fabric and print controls">
 
 The second tab. Pick a garment, the same meshes the Tenzen store uses: oversized
-tee, waffle tee, henley, baby tee, layered tee, hoodie, sweatshirt, polo,
+tee, waffle tee, henley, baby tee, layered tee, hoodie, zip hoodie (black and gray),
+sweatshirt, polo,
 sweatpants and three caps. Choose a colour and a fabric for each part (jersey,
 **crew tee lines**, fleece, heather, waffle, ribbed), then add designs: the front,
 the back, a sleeve, or anywhere at all, the hood or the brim included. **Current
