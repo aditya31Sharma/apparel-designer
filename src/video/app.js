@@ -224,7 +224,9 @@
     Object.keys(vids).forEach(function (k) { if (k !== a.r.c.token) { vids[k].pause(); } });
     var v = videoEl(a.r.c);
     v.muted = !!a.r.c.muted; v.volume = Math.min(1, a.r.c.volume == null ? 1 : a.r.c.volume);
-    if (current !== a.r || Math.abs(v.currentTime - a.src) > .15) { v.currentTime = a.src; current = a.r; }
+    // layout() rebuilds its rows every call, so the clip itself is the stable identity.
+    // Re-seeking while a seek is still decoding leaves the video with no frame to draw.
+    if (current !== a.r.c || (!v.seeking && Math.abs(v.currentTime - a.src) > .3)) { v.currentTime = a.src; current = a.r.c; }
     if (Math.abs(v.playbackRate - a.speed) > .01) v.playbackRate = a.speed;
     if (playing && v.paused) v.play().catch(function () {});
     if (!playing && !v.paused) v.pause();
