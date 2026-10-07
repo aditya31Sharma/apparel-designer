@@ -11,7 +11,7 @@ const menuHandlers = {};
 [
   'open', 'save', 'separations', 'copy', 'undo', 'redo',
   'fit', 'actual', 'grid', 'bg', 'removebg',
-  'tool:warp', 'tool:dither', 'tool:halftone', 'mockup'
+  'tool:warp', 'tool:dither', 'tool:halftone', 'mockup', 'video'
 ].forEach((name) => {
   ipcRenderer.on('menu:' + name, () => {
     const fn = menuHandlers[name];
@@ -43,5 +43,19 @@ contextBridge.exposeInMainWorld('desktop', {
   onUpdate: (fn) => ipcRenderer.on('update:state', (_e, state) => fn(state)),
   restart: () => ipcRenderer.invoke('update:restart'),
   openReleases: () => ipcRenderer.invoke('update:releases'),
-  revertUpdate: () => ipcRenderer.invoke('update:revert')
+  revertUpdate: () => ipcRenderer.invoke('update:revert'),
+
+  /* Video Editor. Media reaches the page as loopback URLs, never as paths it can
+   * open itself; rendering and YouTube import run in the main process. */
+  video: {
+    status: () => ipcRenderer.invoke('video:status'),
+    pick: (kind) => ipcRenderer.invoke('video:pick', kind),
+    youtube: (url) => ipcRenderer.invoke('video:youtube', url),
+    saveProject: (json) => ipcRenderer.invoke('video:project:save', json),
+    loadProject: () => ipcRenderer.invoke('video:project:load'),
+    render: (project, overlays) => ipcRenderer.invoke('video:render', project, overlays),
+    cancel: () => ipcRenderer.invoke('video:cancel'),
+    reveal: (file) => ipcRenderer.invoke('video:reveal', file),
+    onProgress: (fn) => ipcRenderer.on('video:progress', (_e, p) => fn(p))
+  }
 });

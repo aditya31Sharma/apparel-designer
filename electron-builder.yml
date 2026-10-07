@@ -16,6 +16,7 @@ files:
   - electron/update.js
   - electron/fonts.js
   - electron/zip.js
+  - electron/video.js
   - "!**/*.map"
 # Background removal runs in a spawned system Node, which cannot read anything
 # inside an asar archive. Its script and the native runtime have to sit on the

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Video Editor</title>
+<link rel="stylesheet" href="video.css">
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <div class="grp">
+      <button id="undo" class="ib" title="Undo  ⌘Z">↶</button>
+      <button id="redo" class="ib" title="Redo  ⇧⌘Z">↷</button>
+    </div>
+    <div class="grp">
+      <button id="split" title="Split the selected clip at the playhead  S">Split</button>
+      <button id="del" title="Delete the selection  ⌫">Delete</button>
+    </div>
+    <div class="grp center">
+      <button id="prev" class="ib" title="Previous frame  ←">⏮</button>
+      <button id="play" class="pri play" title="Play / pause  Space">Play</button>
+      <button id="next" class="ib" title="Next frame  →">⏭</button>
+      <span id="tc" class="tc">0:00.00</span>
+      <button id="loop" class="tg on" title="Loop the timeline">Loop</button>
+    </div>
+    <div class="grp">
+      <select id="format" title="Output size">
+        <option value="1080x1920">9:16 Reel</option><option value="1080x1350">4:5 Post</option>
+        <option value="1080x1080">1:1 Square</option><option value="1920x1080">16:9 Wide</option>
+      </select>
+      <select id="fps" title="Frame rate"><option>24</option><option selected>30</option><option>60</option></select>
+      <button id="export" class="pri">Export MP4</button>
+    </div>
+  </div>
+
+  <div class="mid">
+    <aside class="bin">
+      <h2>Media</h2>
+      <div class="adds">
+        <button id="addVideo">+ Video</button><button id="addAudio">+ Audio</button>
+        <button id="addImage">+ Image</button><button id="addText">+ Text</button>
+      </div>
+      <div class="yt">
+        <input id="ytUrl" placeholder="Paste a YouTube link for audio">
+        <button id="ytGo">Import</button>
+      </div>
+      <h2>Effects</h2>
+      <div class="adds fx">
+        <button data-fx="bw">Black &amp; white</button><button data-fx="blur">Blur</button>
+        <button data-fx="grain">Grain</button><button data-fx="grade">Colour grade</button>
+        <button data-fx="fade">Fade to black</button>
+      </div>
+      <p class="note">Effects and overlays land at the playhead. Drag them on the timeline, drag their edges to set when they start and end.</p>
+      <div id="status" class="note"></div>
+    </aside>
+
+    <section class="view" id="view">
+      <div class="stage" id="stage"><canvas id="cv"></canvas><div id="empty" class="empty">Add a video to start</div></div>
+    </section>
+
+    <aside class="insp" id="insp"></aside>
+  </div>
+
+  <div class="tl">
+    <div class="tlbar">
+      <span class="note">Space play · S split · ⌫ delete · ⌘Z undo · ← → frame · Alt drag = no snap</span>
+      <span class="grow"></span>
+      <button id="zout" class="ib" title="Zoom out">−</button><button id="zin" class="ib" title="Zoom in">+</button>
+    </div>
+    <div class="scroller" id="scroller"><div class="inner" id="inner"></div></div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+<div id="busy" hidden><div class="box"><b id="busyT">Rendering</b><div class="prog"><i id="busyP"></i></div><button id="busyX">Cancel</button></div></div>
+<script src="app.js"></script>
+</body>
+</html>

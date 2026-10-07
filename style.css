@@ -390,6 +390,9 @@ main{position:relative}
 #mockup{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;
   background:var(--bg);z-index:5}
 #mockup[hidden]{display:none}
+#video{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:var(--bg);z-index:6}
+#video[hidden]{display:none}
+body.mode-video header > :not(.brand):not(.modes){display:none}
 /* The mockup has its own toolbar and panels; the artwork's controls step aside. */
 body.mode-3d header > :not(.brand):not(.modes){display:none}
 /* A desktop tool: the phone layout keeps the toolbar it had. */

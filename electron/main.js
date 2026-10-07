@@ -28,6 +28,7 @@ const http = require('http');
 const net = require('net');
 
 const UPDATE = require('./update.js');
+const VIDEO = require('./video.js');
 
 /* The app was called Apparel Designer until 3.0.0, and its data folder carried
  * that name. Bring over what is worth keeping, once and before anything opens
@@ -257,6 +258,7 @@ function buildMenu() {
         { label: 'Dither', accelerator: 'CmdOrCtrl+Alt+2', click: send('menu:tool:dither') },
         { label: 'Halftone', accelerator: 'CmdOrCtrl+Alt+3', click: send('menu:tool:halftone') },
         { label: '3D Mockup', accelerator: 'CmdOrCtrl+Alt+4', click: send('menu:mockup') },
+        { label: 'Video Editor', accelerator: 'CmdOrCtrl+Alt+5', click: send('menu:video') },
         { type: 'separator' },
         { label: 'Remove Background', accelerator: 'CmdOrCtrl+Alt+B', click: send('menu:removebg') }
       ]
@@ -412,6 +414,7 @@ app.whenReady().then(async () => {
   }
 
   await startServer();
+  VIDEO.init(() => win);
   createWindow();
   buildMenu();
 
