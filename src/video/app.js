@@ -160,6 +160,7 @@
       if (!within(fx, T)) return;
       if (fx.type === 'bw') f.push('grayscale(1) contrast(' + (fx.amount || 2) + ')');
       if (fx.type === 'invert') f.push('invert(1)');
+      if (fx.type === 'blow') f.push('brightness(' + (1 + (fx.amount == null ? .6 : fx.amount) * 1.8) + ') saturate(' + (1 - (fx.amount || .6) * .6) + ')');
       if (fx.type === 'dither') f.push('contrast(1.5) saturate(.6)');
       if (fx.type === 'blur') f.push('blur(' + (fx.amount || 8) * (P.width / 1080) + 'px)');
       if (fx.type === 'grade') f.push('brightness(' + (1 + (fx.exposure || 0) * .5) + ') contrast(' + (1 + (fx.contrast || 0)) + ') saturate(' + (1 + (fx.saturation || 0)) + ')');
@@ -347,7 +348,16 @@
     grade: { name: 'Colour grade', exposure: 0, contrast: 0, saturation: 0 }, fade: { name: 'Fade to black', amount: 1 }, white: { name: 'Flash white', amount: 1 },
     stutter: { name: 'Stutter', amount: 4 }, rgb: { name: 'RGB split', amount: 8 }, invert: { name: 'Invert', amount: 1 },
     dither: { name: 'Dither', amount: 6 }, shake: { name: 'Shake', amount: 24 }, leak: { name: 'Light leak', amount: .8 },
-    whip: { name: 'Whip pan', amount: 60, dir: 1 }, burn: { name: 'Film burn', amount: .85 } };
+    whip: { name: 'Whip pan', amount: 60, dir: 1 }, burn: { name: 'Film burn', amount: .85 }, blow: { name: 'Blow out', amount: .6 } };
+  /* A camera flash the way edits do it: exposure climbs over two frames, two frames of
+   * white, then the next shot decays back over three. Warm = film burn tint on top. */
+  function addFlash(at, warm) {
+    var f = 1 / P.fps, i;
+    [[-2, .45], [-1, .85]].forEach(function (p) { P.effects.push(Object.assign({ id: uid(), type: 'blow', on: true, start: at + p[0] * f, end: at + (p[0] + 1) * f }, FX.blow, { amount: p[1] })); });
+    P.effects.push(Object.assign({ id: uid(), type: warm ? 'burn' : 'white', on: true, start: at, end: at + 2 * f }, warm ? FX.burn : FX.white, { amount: warm ? .9 : 1 }));
+    [[2, .85], [3, .5], [4, .22]].forEach(function (p) { P.effects.push(Object.assign({ id: uid(), type: 'blow', on: true, start: at + p[0] * f, end: at + (p[0] + 1) * f }, FX.blow, { amount: p[1] })); });
+    if (warm) [[2, .5], [3, .25]].forEach(function (p) { P.effects.push(Object.assign({ id: uid(), type: 'burn', on: true, start: at + p[0] * f, end: at + (p[0] + 1) * f }, FX.burn, { amount: p[1] })); });
+  }
   var leaks = {};   // token -> looping <video> for light leak effects
   function leakEl(fx) {
     if (!fx.token) return null; if (leaks[fx.token]) return leaks[fx.token];
@@ -674,6 +684,7 @@
       if (x.type === 'dither') slider('Levels', 'amount', x, 2, 16, 1, PX);
       if (x.type === 'whip') { slider('Smear', 'amount', x, 4, 160, 1, function (v) { return v + 'px'; }); btns([['Left to right', function () { x.dir = 1; commit(); }], ['Right to left', function () { x.dir = -1; commit(); }]]); }
       if (x.type === 'burn') slider('Strength', 'amount', x, 0, 1, .01, PC);
+      if (x.type === 'blow') slider('Amount', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'shake') slider('Amount', 'amount', x, 2, 80, 1, function (v) { return v + 'px'; });
       if (x.type === 'leak') slider('Strength', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'rgb') slider('Split', 'amount', x, 1, 40, 1, function (v) { return v + 'px'; }, renderTimeline);
@@ -748,6 +759,8 @@
   $('ytGo').onclick = youtube; $('ytUrl').onkeydown = function (e) { if (e.key === 'Enter') youtube(); };
   document.querySelectorAll('[data-fx]').forEach(function (b) { b.onclick = function () { addFx(b.dataset.fx); }; });
   $('outro').onclick = addOutro; $('addLeak').onclick = addLeak;
+  $('flashCold').onclick = function () { if (!P.clips.length) return; addFlash(t, false); commit(); };
+  $('flashWarm').onclick = function () { if (!P.clips.length) return; addFlash(t, true); commit(); };
   $('format').onchange = function (e) { var wh = e.target.value.split('x').map(Number); P.width = wh[0]; P.height = wh[1]; sizeStage(); commit(); };
   $('fps').onchange = function (e) { P.fps = +e.target.value; commit(); };
   $('export').onclick = doExport;

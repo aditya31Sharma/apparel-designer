@@ -239,6 +239,10 @@ function buildGraph(P, overlayFiles) {
       fc.push(`${cur}split${S}${L}`);
       fc.push(`${L}fps=${(FPS / k).toFixed(4)},fps=${FPS}${out}`);
       fc.push(`${S}${out}overlay=eof_action=pass:${E(fx)}${mix}`); cur = mix;
+    } else if (fx.type === 'blow') {
+      // exposure blow-out: the picture lifts towards white
+      const a = Math.max(0, Math.min(1, num(fx.amount, 0.6)));
+      step(`lutyuv=y='min(255,val*${f3(1 + a * 1.6)}+${Math.round(a * 140)})':u='128+(val-128)*${f3(1 - a * 0.7)}':v='128+(val-128)*${f3(1 - a * 0.7)}':${E(fx)}`);
     } else if (fx.type === 'invert') {
       step(`negate=${E(fx)}`);
     } else if (fx.type === 'dither') {
