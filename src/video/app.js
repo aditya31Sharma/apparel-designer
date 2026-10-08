@@ -337,32 +337,45 @@
   }
 
   /* ---------------- timeline ---------------- */
-  var GUT = 132, inner = $('inner');
+  var GUT = 132, inner = $('inner'), snapMode = 'grid';   // 'grid' | 'edges' | 'off'
+  var T0 = 0;                   // timeline origin, below zero when audio starts before the video
+  var live = [];                // [{el, range}] repositioned during drags without rebuilding the DOM
   var laneW = function () { var l = inner.querySelector('.lane'); return l ? l.clientWidth : 600; };
+  var origin = function () { var m = 0; P.audio.forEach(function (a) { if (a.at < m) m = a.at; }); return Math.min(0, Math.floor(m)); };
   var span_ = function () { return Math.max(total(), 5) + 1; };
-  var x2t = function (x) { return x / laneW() * span_(); };
-  var pct = function (s) { return (s / span_() * 100) + '%'; };
+  var W = function () { return span_() - T0; };
+  var x2t = function (x) { return x / laneW() * W(); };
+  var pct = function (s) { return ((s - T0) / W() * 100) + '%'; };
+  var pw = function (d) { return (d / W() * 100) + '%'; };
+  function gridStep() { return zoom > 6 ? .1 : zoom > 2.5 ? .5 : 1; }
   function snapT(T, ev, skip) {
-    if (ev && ev.altKey) return T;
+    hideSnap();
+    if (snapMode === 'off' || (ev && ev.altKey)) return Math.round(T * P.fps) / P.fps;
     var pts = [0, total(), t];
     layout().forEach(function (r) { pts.push(r.start, r.end); });
     P.overlays.concat(P.effects).forEach(function (o) { if (o !== skip) pts.push(o.start, o.end); });
     P.audio.forEach(function (a) { if (a !== skip) pts.push(a.at, a.at + a.length); });
-    var thr = x2t(7), best = T, bd = thr;
-    pts.forEach(function (p) { var d = Math.abs(p - T); if (d < bd) { bd = d; best = p; } });
+    var thr = x2t(8), best = T, bd = thr, hit = false;
+    pts.forEach(function (p) { var d = Math.abs(p - T); if (d < bd) { bd = d; best = p; hit = true; } });
+    if (!hit && snapMode === 'grid') { var g = gridStep(), q = Math.round(T / g) * g; if (Math.abs(q - T) < thr) { best = q; hit = true; } }
+    if (hit) showSnap(best);
     return Math.round(best * P.fps) / P.fps;
   }
+  function showSnap(p) { var s = $('snapline'); if (s) { s.style.left = (GUT + (p - T0) / W() * laneW()) + 'px'; s.style.display = 'block'; } }
+  function hideSnap() { var s = $('snapline'); if (s) s.style.display = 'none'; }
   var COLORS = { clip: 'var(--c-video)', text: 'var(--c-text)', image: 'var(--c-image)', effect: 'var(--c-fx)', audio: 'var(--c-audio)' };
   function row(label, color, cls) {
     var r = document.createElement('div'); r.className = 'trk' + (cls ? ' ' + cls : '');
     r.innerHTML = '<div class="name"><i style="background:' + color + '"></i><span>' + label + '</span></div><div class="lane"></div>';
     inner.appendChild(r); return r.querySelector('.lane');
   }
-  function clipEl(lane, a, b, label, color, isSel, off, handles) {
-    var c = document.createElement('div'); c.className = 'clip' + (isSel ? ' sel' : '') + (off ? ' off' : '');
-    c.style.left = pct(a); c.style.width = 'calc(' + pct(b - a) + ' - 1px)'; c.style.background = color;
+  function place(el, a, b) { el.style.left = pct(a); el.style.width = 'calc(' + pw(b - a) + ' - 1px)'; }
+  function relayout() { live.forEach(function (x) { var r = x.range(); if (r) place(x.el, r[0], r[1]); }); drawPlayhead(); }
+  function clipEl(lane, key, range, label, color, isSel, off, handles) {
+    var c = document.createElement('div'); c.className = 'clip' + (isSel ? ' sel' : '') + (off ? ' off' : ''); c.dataset.k = key;
+    var r = range(); place(c, r[0], r[1]); c.style.background = color;
     c.innerHTML = '<canvas></canvas><span>' + label + '</span>' + (handles ? '<div class="h l"></div><div class="h r"></div>' : '');
-    lane.appendChild(c); return c;
+    lane.appendChild(c); live.push({ el: c, range: range }); return c;
   }
   function wave(cvEl, buf, from, len) {
     if (!buf) return; var w = cvEl.width = Math.max(40, cvEl.clientWidth * 2), h = cvEl.height = 60, g = cvEl.getContext('2d');
@@ -375,71 +388,93 @@
     var w = cvEl.width = Math.max(40, cvEl.clientWidth * 2), h = cvEl.height = 80, g = cvEl.getContext('2d'), tw = h * v.videoWidth / v.videoHeight;
     for (var x = 0; x < w; x += tw) g.drawImage(v, x, 0, tw, h);
   }
-  function drag(el, onMove, onUp) {
+  /* Drags never rebuild the timeline while the pointer is down: the element that holds the
+   * pointer capture would be destroyed and the drag would stop. The model is updated, the
+   * elements are repositioned in place, and the DOM is rebuilt once on release. If the origin
+   * has to move (audio dragged before zero) the timeline is rebuilt and the capture is handed
+   * to the new element for the same item. */
+  function drag(el, key, onStart, onMove, onUp) {
     el.addEventListener('pointerdown', function (e) {
-      var x0 = e.clientX, mode = e.target.classList.contains('l') ? 'l' : e.target.classList.contains('r') ? 'r' : 'm';
-      var start = onMove(null, mode); el.setPointerCapture(e.pointerId); var moved = false;
-      el.onpointermove = function (ev) { moved = true; onMove(x2t(ev.clientX - x0), mode, ev, start); };
-      el.onpointerup = function () { el.onpointermove = null; onUp(moved); };
+      if (e.button !== 0) return;
+      var mode = e.target.classList.contains('l') ? 'l' : e.target.classList.contains('r') ? 'r' : 'm';
+      var x0 = e.clientX, st = onStart(mode), moved = false, cur = el, pid = e.pointerId;
+      cur.setPointerCapture(pid);
+      var mv = function (ev) {
+        moved = true; onMove(x2t(ev.clientX - x0), mode, ev, st);
+        if (origin() !== T0) {
+          renderTimeline(); var n = inner.querySelector('[data-k="' + key + '"]');
+          if (n) { cur.onpointermove = null; cur.onpointerup = null; cur = n; cur.setPointerCapture(pid); cur.onpointermove = mv; cur.onpointerup = up; x0 = ev.clientX; st = onStart(mode); }
+        } else relayout();
+        inspector(true); draw();
+      };
+      var up = function () { cur.onpointermove = null; cur.onpointerup = null; hideSnap(); onUp(moved); };
+      cur.onpointermove = mv; cur.onpointerup = up;
       e.stopPropagation();
     });
   }
   function renderTimeline() {
+    T0 = origin(); live = [];
     inner.style.width = (100 * zoom) + '%'; inner.innerHTML = '';
     var R = document.createElement('div'); R.className = 'ruler';
     var T = span_(), step = T > 40 ? 5 : T > 16 ? 2 : zoom > 2.5 ? .5 : 1, html = '<div class="gut"></div><div class="scale" id="scale">';
-    for (var s = 0; s <= T + 1e-6; s += step) html += '<i style="left:' + pct(s) + '"></i>' + (Math.abs(s % 1) < 1e-6 || step < 1 ? '<span style="left:' + pct(s) + '">' + (+s.toFixed(1)) + 's</span>' : '');
+    for (var s = Math.ceil(T0 / step) * step; s <= T + 1e-6; s += step) {
+      var z = Math.abs(s) < 1e-6;
+      html += '<i style="left:' + pct(s) + (z ? ';height:100%;background:var(--ink2)' : '') + '"></i>' + (Math.abs(s % 1) < 1e-6 || step < 1 ? '<span style="left:' + pct(s) + '">' + (+s.toFixed(1)) + 's</span>' : '');
+    }
     R.innerHTML = html + '</div>'; inner.appendChild(R);
+    var sb = $('snap'); if (sb) { sb.textContent = snapMode === 'grid' ? 'Snap: ' + gridStep() + 's' : snapMode === 'edges' ? 'Snap: edges' : 'Snap: off'; sb.classList.toggle('on', snapMode !== 'off'); }
 
     var vl = row('Video', COLORS.clip, 'main');
     layout().forEach(function (r) {
       var c = r.c, isS = sel && sel.kind === 'clip' && sel.id === c.id;
       var lab = c.name + (c.ramp ? ' · ' + c.speed + '→' + c.speedEnd + 'x' : c.speed !== 1 ? ' · ' + c.speed + 'x' : '');
-      var el = clipEl(vl, r.start, r.end, lab, COLORS.clip, isS, false, true);
+      var el = clipEl(vl, 'clip' + c.id, function () { var q = layout().find(function (z) { return z.c === c; }); return q ? [q.start, q.end] : null; }, lab, COLORS.clip, isS, false, true);
       thumbs(el.querySelector('canvas'), c);
-      drag(el, function (dt, mode, ev, st) {
-        if (dt === null) { select({ kind: 'clip', id: c.id }); return { in: c.in, out: c.out, idx: P.clips.indexOf(c) }; }
+      drag(el, 'clip' + c.id, function () { select({ kind: 'clip', id: c.id }); return { in: c.in, out: c.out }; }, function (dt, mode, ev, st) {
         var sp = c.speed || 1;
         if (mode === 'l') c.in = Math.max(0, Math.min(c.out - .1, st.in + dt * sp));
         else if (mode === 'r') c.out = Math.min(c.duration, Math.max(c.in + .1, st.out + dt * sp));
         else { // reorder by dragging over neighbours
-          var mid = r.start + (r.end - r.start) / 2 + dt, L = layout(), to = L.findIndex(function (q) { return mid < q.end; }); if (to < 0) to = L.length - 1;
+          var L = layout(), q = L.find(function (z) { return z.c === c; }), mid = q.start + (q.end - q.start) / 2 + dt, to = L.findIndex(function (z) { return mid < z.end; }); if (to < 0) to = L.length - 1;
           var from = P.clips.indexOf(c); if (to !== from) { P.clips.splice(from, 1); P.clips.splice(to, 0, c); }
         }
-        renderTimeline(); seek(t);
+        seek(t);
       }, function (moved) { if (moved) commit(); });
     });
 
     P.overlays.forEach(function (o) {
       var isS = sel && sel.kind === 'overlay' && sel.id === o.id, color = o.kind === 'text' ? COLORS.text : COLORS.image;
       var lane = row(o.kind === 'text' ? 'Text' : 'Image', color);
-      var el = clipEl(lane, o.start, o.end, o.kind === 'text' ? String(o.text).split('\n').join(' / ') : o.name, color, isS, o.on === false, true);
+      var el = clipEl(lane, 'overlay' + o.id, function () { return [o.start, o.end]; }, o.kind === 'text' ? String(o.text).split('\n').join(' / ') : o.name, color, isS, o.on === false, true);
       rangeDrag(el, o, 'overlay');
     });
     P.effects.forEach(function (fx) {
       var isS = sel && sel.kind === 'effect' && sel.id === fx.id, lane = row(fx.name, COLORS.effect);
-      var el = clipEl(lane, fx.start, fx.end, fx.name + fxLabel(fx), COLORS.effect, isS, fx.on === false, true);
+      var el = clipEl(lane, 'effect' + fx.id, function () { return [fx.start, fx.end]; }, fx.name + fxLabel(fx), COLORS.effect, isS, fx.on === false, true);
       rangeDrag(el, fx, 'effect');
     });
     P.audio.forEach(function (a) {
       var isS = sel && sel.kind === 'audio' && sel.id === a.id, lane = row(a.name, COLORS.audio);
-      var el = clipEl(lane, a.at, a.at + a.length, a.name + (a.muffle && a.muffle.on ? ' · muffled' : ''), COLORS.audio, isS, a.on === false, true);
+      var el = clipEl(lane, 'audio' + a.id, function () { return [a.at, a.at + a.length]; }, a.name + (a.muffle && a.muffle.on ? ' · muffled' : ''), COLORS.audio, isS, a.on === false, true);
       wave(el.querySelector('canvas'), bufs[a.token], a.from, a.length);
-      drag(el, function (dt, mode, ev, st) {
-        if (dt === null) { select({ kind: 'audio', id: a.id }); return { at: a.at, len: a.length, from: a.from }; }
+      drag(el, 'audio' + a.id, function () { select({ kind: 'audio', id: a.id }); return { at: a.at, len: a.length, from: a.from }; }, function (dt, mode, ev, st) {
         var max = (a.duration || 1e9);
-        if (mode === 'm') { var nat = snapT(Math.max(0, st.at + dt), ev, a); var sh = nat - a.at; a.at = nat; if (a.muffle) { a.muffle.start += sh; a.muffle.end += sh; } }
-        else if (mode === 'l') { var na = snapT(Math.max(0, Math.min(st.at + st.len - .05, st.at + dt)), ev, a), d = na - st.at; if (st.from + d < 0) return; a.at = na; a.from = st.from + d; a.length = st.len - d; }
-        else { var ne = snapT(Math.min(st.at + (max - st.from), Math.max(st.at + .05, st.at + st.len + dt)), ev, a); a.length = ne - a.at; }
-        renderTimeline(); inspector(true);
+        if (mode === 'm') {   // free: the song may start before the video and get trimmed later
+          var nat = snapT(Math.max(-st.len + .5, st.at + dt), ev, a), sh = nat - a.at; a.at = nat;
+          if (a.muffle) { a.muffle.start += sh; a.muffle.end += sh; }
+        } else if (mode === 'l') {
+          var na = snapT(Math.max(st.at - st.from, Math.min(st.at + st.len - .05, st.at + dt)), ev, a), d = na - st.at;
+          a.at = na; a.from = st.from + d; a.length = st.len - d;
+        } else { var ne = snapT(Math.min(st.at + (max - st.from), Math.max(st.at + .05, st.at + st.len + dt)), ev, a); a.length = ne - a.at; }
       }, function (moved) { if (moved) commit(); });
     });
 
     var ph = document.createElement('div'); ph.className = 'ph'; ph.id = 'ph'; inner.appendChild(ph);
+    var sl = document.createElement('div'); sl.className = 'snapline'; sl.id = 'snapline'; sl.style.display = 'none'; inner.appendChild(sl);
     var sc = $('scale');
     sc.addEventListener('pointerdown', function (e) {
-      var go = function (ev) { var r = sc.getBoundingClientRect(); seek(snapT(Math.max(0, (ev.clientX - r.left) / r.width * span_()), ev)); };
-      go(e); sc.setPointerCapture(e.pointerId); sc.onpointermove = go; sc.onpointerup = function () { sc.onpointermove = null; };
+      var go = function (ev) { var r = sc.getBoundingClientRect(); seek(snapT((ev.clientX - r.left) / r.width * W() + T0, ev)); };
+      go(e); sc.setPointerCapture(e.pointerId); sc.onpointermove = go; sc.onpointerup = function () { sc.onpointermove = null; hideSnap(); };
     });
     drawPlayhead();
   }
@@ -450,20 +485,22 @@
     return '';
   }
   function rangeDrag(el, o, kind) {
-    drag(el, function (dt, mode, ev, st) {
-      if (dt === null) { select({ kind: kind, id: o.id }); return { s: o.start, e: o.end }; }
+    drag(el, kind + o.id, function () { select({ kind: kind, id: o.id }); return { s: o.start, e: o.end }; }, function (dt, mode, ev, st) {
       var T = Math.max(total(), .1);
       if (mode === 'm') { var len = st.e - st.s, s = snapT(Math.max(0, Math.min(T - len, st.s + dt)), ev, o); o.start = s; o.end = s + len; }
       else if (mode === 'l') o.start = snapT(Math.max(0, Math.min(o.end - 1 / P.fps, st.s + dt)), ev, o);
       else o.end = snapT(Math.min(T, Math.max(o.start + 1 / P.fps, st.e + dt)), ev, o);
-      renderTimeline(); inspector(true); draw();
     }, function (moved) { if (moved) commit(); });
   }
   function drawPlayhead() {
     var ph = $('ph'), sc = $('scale'); if (!ph || !sc) return;
-    ph.style.left = (GUT + t / span_() * sc.clientWidth) + 'px';
+    ph.style.left = (GUT + (t - T0) / W() * sc.clientWidth) + 'px';
   }
-  function select(s) { sel = s; inner.querySelectorAll('.clip.sel').forEach(function (n) { n.classList.remove('sel'); }); inspector(); draw(); setTimeout(renderTimeline, 0); }
+  function select(s) {
+    sel = s; var k = s ? s.kind + s.id : null;
+    inner.querySelectorAll('.clip').forEach(function (n) { n.classList.toggle('sel', n.dataset.k === k); });
+    inspector(); draw();
+  }
 
   /* ---------------- inspector ---------------- */
   var I = $('insp');
@@ -563,7 +600,7 @@
       head('Audio'); var an = document.createElement('p'); an.className = 'note'; an.textContent = x.name; I.appendChild(an);
       check('Enabled', 'on', x); slider('Volume', 'volume', x, 0, 1.5, .01, PC);
       sec('Placement');
-      slider('Starts at', 'at', x, 0, Math.max(total(), .1), 1 / P.fps, S, renderTimeline);
+      slider('Starts at', 'at', x, -Math.max(x.length - .5, 0), Math.max(total(), .1), 1 / P.fps, S, renderTimeline);
       slider('Length', 'length', x, .05, Math.min(x.duration || 60, Math.max(total(), 1)), .01, S, renderTimeline);
       slider('Song from', 'from', x, 0, Math.max(0, (x.duration || 0) - .05), .01, S, renderTimeline);
       slider('Fade in', 'fadeIn', x, 0, 3, .05, S); slider('Fade out', 'fadeOut', x, 0, 3, .05, S);
@@ -604,7 +641,10 @@
   function doExport() {
     if (!need() || !P.clips.length) return toast('Add a video clip first.', true);
     pause(); $('busy').hidden = false; $('busyP').style.width = '0'; $('busyT').textContent = 'Rendering ' + P.name;
-    overlayPNGs().then(function (ovs) { return DESK.render(JSON.stringify(P), JSON.stringify(ovs)); })
+    // audio placed before zero is trimmed to the video start for the render
+    var Q = JSON.parse(JSON.stringify(P));
+    Q.audio = Q.audio.filter(function (a) { if (a.at < 0) { var cut = -a.at; a.from += cut; a.length -= cut; a.at = 0; } return a.length > .05; });
+    overlayPNGs().then(function (ovs) { return DESK.render(JSON.stringify(Q), JSON.stringify(ovs)); })
       .then(function (r) { $('busy').hidden = true; toast('Saved to Downloads: ' + r.name); DESK.reveal(r.path); })
       .catch(function (e) { $('busy').hidden = true; toast(String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), true); });
   }
@@ -618,6 +658,7 @@
   $('undo').onclick = undo; $('redo').onclick = redo; $('split').onclick = split; $('del').onclick = del;
   $('zin').onclick = function () { zoom = Math.min(10, zoom * 1.5); renderTimeline(); };
   $('zout').onclick = function () { zoom = Math.max(1, zoom / 1.5); renderTimeline(); };
+  $('snap').onclick = function () { snapMode = snapMode === 'grid' ? 'edges' : snapMode === 'edges' ? 'off' : 'grid'; renderTimeline(); };
   $('addVideo').onclick = addVideos; $('addAudio').onclick = addAudio; $('addImage').onclick = addImage; $('addText').onclick = addText;
   $('ytGo').onclick = youtube; $('ytUrl').onkeydown = function (e) { if (e.key === 'Enter') youtube(); };
   document.querySelectorAll('[data-fx]').forEach(function (b) { b.onclick = function () { addFx(b.dataset.fx); }; });
