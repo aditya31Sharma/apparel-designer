@@ -93,7 +93,7 @@
   }
 
   /* ---------------- drawing ---------------- */
-  var cv = $('cv'), ctx = cv.getContext('2d');
+  var cv = $('cv'), ctx = cv.getContext('2d'), hold = document.createElement('canvas');   // last drawn picture, for the stutter effect
   var grainTiles = [];
   (function makeGrain() {
     for (var k = 0; k < 6; k++) {
@@ -161,7 +161,12 @@
       if (fx.type === 'blur') f.push('blur(' + (fx.amount || 8) * (P.width / 1080) + 'px)');
       if (fx.type === 'grade') f.push('brightness(' + (1 + (fx.exposure || 0) * .5) + ') contrast(' + (1 + (fx.contrast || 0)) + ') saturate(' + (1 + (fx.saturation || 0)) + ')');
     });
-    if (a) {
+    // stutter: hold the last drawn picture for N frames so playback looks laggy
+    var st = P.effects.find(function (fx) { return fx.type === 'stutter' && fx.on !== false && within(fx, T); });
+    if (st && hold.w && Math.round(T * P.fps) % Math.max(2, Math.round(st.amount || 4)) !== 0) {
+      ctx.drawImage(hold, 0, 0); hold.skip = true;
+    } else hold.skip = false;
+    if (a && !hold.skip) {
       var v = videoEl(a.r.c);
       if (v.readyState >= 2) {
         ctx.filter = f.join(' ') || 'none';
@@ -169,8 +174,18 @@
         // motion: a slow push or pull across the clip, panned inside the spare picture
         var mc = a.r.c, mp = Math.max(0, Math.min(1, (T - a.r.start) / Math.max(1e-6, a.r.end - a.r.start)));
         var z = (mc.zoomFrom || 1) + ((mc.zoomTo || 1) - (mc.zoomFrom || 1)) * mp, dw = vw * k * z, dh = vh * k * z;
-        ctx.drawImage(v, (cv.width - dw) / 2 + (mc.panX || 0) * (dw - cv.width) / 2, (cv.height - dh) / 2 + (mc.panY || 0) * (dh - cv.height) / 2, dw, dh);
+        var dx = (cv.width - dw) / 2 + (mc.panX || 0) * (dw - cv.width) / 2, dy = (cv.height - dh) / 2 + (mc.panY || 0) * (dh - cv.height) / 2;
+        ctx.drawImage(v, dx, dy, dw, dh);
         ctx.filter = 'none';
+        var rg = P.effects.find(function (fx) { return fx.type === 'rgb' && fx.on !== false && within(fx, T); });
+        if (rg) {   // chromatic split preview: a red copy left, a blue copy right
+          var px = (rg.amount || 8) * cv.width / 1080;
+          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .35; ctx.filter = 'saturate(3)';
+          ctx.drawImage(v, dx - px, dy, dw, dh); ctx.drawImage(v, dx + px, dy, dw, dh);
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+        }
+        if (hold.w !== cv.width || hold.h !== cv.height) { hold.width = hold.w = cv.width; hold.height = hold.h = cv.height; }
+        hold.getContext('2d').drawImage(cv, 0, 0);
       }
       var lt = T - a.r.start, ld = a.r.end - a.r.start, fade = 1;
       if (a.r.c.fadeIn > 0) fade = Math.min(fade, lt / a.r.c.fadeIn);
@@ -307,7 +322,8 @@
     });
   }
   var FX = { bw: { name: 'Black & white', amount: 2 }, blur: { name: 'Blur', amount: 8 }, grain: { name: 'Grain', amount: .45 },
-    grade: { name: 'Colour grade', exposure: 0, contrast: 0, saturation: 0 }, fade: { name: 'Fade to black', amount: 1 }, white: { name: 'Flash white', amount: 1 } };
+    grade: { name: 'Colour grade', exposure: 0, contrast: 0, saturation: 0 }, fade: { name: 'Fade to black', amount: 1 }, white: { name: 'Flash white', amount: 1 },
+    stutter: { name: 'Stutter', amount: 4 }, rgb: { name: 'RGB split', amount: 8 } };
   function addFx(type) {
     var r = span(), fx = Object.assign({ id: uid(), type: type, on: true, start: r.start, end: r.end }, FX[type]);
     if (type === 'white') fx.end = Math.min(fx.end, fx.start + 2 / P.fps);   // a flash is two frames unless stretched
@@ -614,6 +630,8 @@
       if (x.type === 'grain') slider('Amount', 'amount', x, .05, 1, .01, PC, renderTimeline);
       if (x.type === 'fade') slider('Darkness', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'white') slider('Brightness', 'amount', x, 0, 1, .01, PC);
+      if (x.type === 'stutter') slider('Hold frames', 'amount', x, 2, 12, 1, PX, renderTimeline);
+      if (x.type === 'rgb') slider('Split', 'amount', x, 1, 40, 1, function (v) { return v + 'px'; }, renderTimeline);
       if (x.type === 'grade') { slider('Exposure', 'exposure', x, -1, 1, .01, PC); slider('Contrast', 'contrast', x, -.5, 1, .01, PC); slider('Saturation', 'saturation', x, -1, 1, .01, PC); }
       sec('Timing');
       slider('Starts', 'start', x, 0, total(), 1 / P.fps, S, renderTimeline); slider('Ends', 'end', x, 0, total(), 1 / P.fps, S, renderTimeline);

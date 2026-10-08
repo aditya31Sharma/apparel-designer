@@ -232,6 +232,17 @@ function buildGraph(P, overlayFiles) {
       step(`eq=brightness=${f3(num(fx.exposure) * 0.25)}:contrast=${f3(1 + num(fx.contrast))}:saturation=${f3(1 + num(fx.saturation))}:${E(fx)}`);
     } else if (fx.type === 'grain') {
       step(`noise=c0s=${Math.round(num(fx.amount, 0.5) * 40)}:c0f=t+u:${E(fx)}`);
+    } else if (fx.type === 'stutter') {
+      // laggy frame rate: hold every frame for N frames, then overlay the held copy
+      const k = Math.max(2, Math.round(num(fx.amount, 4)));
+      const S = `[ss${fc.length}]`, L = `[sl${fc.length}]`, out = `[so${fc.length}]`, mix = `[sm${fc.length}]`;
+      fc.push(`${cur}split${S}${L}`);
+      fc.push(`${L}fps=${(FPS / k).toFixed(4)},fps=${FPS}${out}`);
+      fc.push(`${S}${out}overlay=eof_action=pass:${E(fx)}${mix}`); cur = mix;
+    } else if (fx.type === 'rgb') {
+      // chromatic split: red one way, blue the other
+      const px = Math.max(0, Math.round(num(fx.amount, 8) * W / 1080));
+      step(`rgbashift=rh=${px}:bh=${-px}:${E(fx)}`);
     } else if (fx.type === 'fade' || fx.type === 'white') {
       const blk = `[fb${fc.length}]`;
       fc.push(`color=c=${fx.type === 'white' ? 'white' : 'black'}:s=${W}x${H}:r=${FPS}:d=${f3(total)},format=rgba,colorchannelmixer=aa=${f3(num(fx.amount, 1))}${blk}`);
