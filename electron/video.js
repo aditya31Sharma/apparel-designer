@@ -259,9 +259,11 @@ function buildGraph(P, overlayFiles) {
       const file = media.get(fx.token);
       if (file) {
         const ix = addInput(file, ['-stream_loop', '-1', '-t', f3(total)]);
-        const L = `[lk${fc.length}]`, mix = `[lm${fc.length}]`;
-        fc.push(`[${ix}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS},setpts=PTS-STARTPTS,format=yuv420p${L}`);
-        fc.push(`${cur}${L}blend=all_mode=screen:all_opacity=${f3(Math.max(0, Math.min(1, num(fx.amount, 0.8))))}:shortest=0:repeatlast=0:${E(fx)}${mix}`); cur = mix;
+        // screen has to happen in RGB: on yuv planes it pushes the chroma towards magenta
+        const L = `[lk${fc.length}]`, C = `[lc${fc.length}]`, mix = `[lm${fc.length}]`;
+        fc.push(`[${ix}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS},setpts=PTS-STARTPTS,format=gbrp${L}`);
+        fc.push(`${cur}format=gbrp${C}`);
+        fc.push(`${C}${L}blend=all_mode=screen:all_opacity=${f3(Math.max(0, Math.min(1, num(fx.amount, 0.8))))}:shortest=0:repeatlast=0:${E(fx)},format=yuv420p${mix}`); cur = mix;
       }
     } else if (fx.type === 'rgb') {
       // chromatic split: red one way, blue the other
