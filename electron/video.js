@@ -190,6 +190,13 @@ function buildGraph(P, overlayFiles) {
       const g = c.grade || {};
       if (g.exposure || g.contrast || g.saturation || g.gamma)
         v += `,eq=brightness=${f3(num(g.exposure) * 0.25)}:contrast=${f3(1 + num(g.contrast))}:saturation=${f3(1 + num(g.saturation))}`;
+      // motion: zoom runs across the whole clip, so each speed piece takes its share of the ramp
+      const zf = Math.max(1, num(c.zoomFrom, 1)), zt = Math.max(1, num(c.zoomTo, 1)), np = speedPieces(c).length;
+      if (zf !== 1 || zt !== 1) {
+        const zs = zf + (zt - zf) * pi / np, ze = zf + (zt - zf) * (pi + 1) / np, N = Math.max(1, Math.round(dur * FPS));
+        const px = Math.max(-1, Math.min(1, num(c.panX))), py = Math.max(-1, Math.min(1, num(c.panY)));
+        v += `,zoompan=z='${f3(zs)}+(${f3(ze)}-${f3(zs)})*on/${N}':x='(iw-iw/zoom)/2*(1+${f3(px)})':y='(ih-ih/zoom)/2*(1+${f3(py)})':d=1:s=${W}x${H}:fps=${FPS}`;
+      }
       v += ',format=yuv420p';
       const first = pi === 0, last = pi === speedPieces(c).length - 1;
       if (first && num(c.fadeIn) > 0) v += `,fade=t=in:st=0:d=${f3(c.fadeIn)}`;
@@ -225,9 +232,9 @@ function buildGraph(P, overlayFiles) {
       step(`eq=brightness=${f3(num(fx.exposure) * 0.25)}:contrast=${f3(1 + num(fx.contrast))}:saturation=${f3(1 + num(fx.saturation))}:${E(fx)}`);
     } else if (fx.type === 'grain') {
       step(`noise=c0s=${Math.round(num(fx.amount, 0.5) * 40)}:c0f=t+u:${E(fx)}`);
-    } else if (fx.type === 'fade') {
+    } else if (fx.type === 'fade' || fx.type === 'white') {
       const blk = `[fb${fc.length}]`;
-      fc.push(`color=c=black:s=${W}x${H}:r=${FPS}:d=${f3(total)},format=rgba,colorchannelmixer=aa=${f3(num(fx.amount, 1))}${blk}`);
+      fc.push(`color=c=${fx.type === 'white' ? 'white' : 'black'}:s=${W}x${H}:r=${FPS}:d=${f3(total)},format=rgba,colorchannelmixer=aa=${f3(num(fx.amount, 1))}${blk}`);
       const mix = `[fm${fc.length}]`; fc.push(`${cur}${blk}overlay=${E(fx)}${mix}`); cur = mix;
     }
   });

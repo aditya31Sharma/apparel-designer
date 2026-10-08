@@ -166,7 +166,10 @@
       if (v.readyState >= 2) {
         ctx.filter = f.join(' ') || 'none';
         var vw = v.videoWidth, vh = v.videoHeight, k = Math.max(cv.width / vw, cv.height / vh);
-        ctx.drawImage(v, (cv.width - vw * k) / 2, (cv.height - vh * k) / 2, vw * k, vh * k);
+        // motion: a slow push or pull across the clip, panned inside the spare picture
+        var mc = a.r.c, mp = Math.max(0, Math.min(1, (T - a.r.start) / Math.max(1e-6, a.r.end - a.r.start)));
+        var z = (mc.zoomFrom || 1) + ((mc.zoomTo || 1) - (mc.zoomFrom || 1)) * mp, dw = vw * k * z, dh = vh * k * z;
+        ctx.drawImage(v, (cv.width - dw) / 2 + (mc.panX || 0) * (dw - cv.width) / 2, (cv.height - dh) / 2 + (mc.panY || 0) * (dh - cv.height) / 2, dw, dh);
         ctx.filter = 'none';
       }
       var lt = T - a.r.start, ld = a.r.end - a.r.start, fade = 1;
@@ -181,7 +184,7 @@
         ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = Math.min(1, (fx.amount || .5));
         ctx.drawImage(tile, 0, 0, cv.width, cv.height); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       }
-      if (fx.type === 'fade') { ctx.fillStyle = 'rgba(0,0,0,' + (fx.amount == null ? 1 : fx.amount) + ')'; ctx.fillRect(0, 0, cv.width, cv.height); }
+      if (fx.type === 'fade' || fx.type === 'white') { ctx.fillStyle = (fx.type === 'white' ? 'rgba(255,255,255,' : 'rgba(0,0,0,') + (fx.amount == null ? 1 : fx.amount) + ')'; ctx.fillRect(0, 0, cv.width, cv.height); }
     });
     P.overlays.forEach(function (o) { if (within(o, T)) drawOverlay(ctx, o, fadeAlpha(o, T)); });
     if (sel && sel.kind === 'overlay') {
@@ -304,10 +307,23 @@
     });
   }
   var FX = { bw: { name: 'Black & white', amount: 2 }, blur: { name: 'Blur', amount: 8 }, grain: { name: 'Grain', amount: .45 },
-    grade: { name: 'Colour grade', exposure: 0, contrast: 0, saturation: 0 }, fade: { name: 'Fade to black', amount: 1 } };
+    grade: { name: 'Colour grade', exposure: 0, contrast: 0, saturation: 0 }, fade: { name: 'Fade to black', amount: 1 }, white: { name: 'Flash white', amount: 1 } };
   function addFx(type) {
     var r = span(), fx = Object.assign({ id: uid(), type: type, on: true, start: r.start, end: r.end }, FX[type]);
+    if (type === 'white') fx.end = Math.min(fx.end, fx.start + 2 / P.fps);   // a flash is two frames unless stretched
     P.effects.push(fx); sel = { kind: 'effect', id: fx.id }; commit();
+  }
+  /* The Tenzen outro: the lockup lands over the last stretch with a white flash and the
+   * music muffles underneath it. Starts at the playhead when it sits inside the video,
+   * otherwise 1.6 s before the end. */
+  function addOutro() {
+    if (!P.clips.length) return toast('Add a video clip first.', true);
+    var T = total(), at = (t > .5 && t < T - .3) ? t : Math.max(0, T - 1.6), f = 1 / P.fps;
+    P.overlays.push({ id: uid(), kind: 'image', token: '', url: 'assets/tenzen-lockup.png', path: '', name: 'Tenzen lockup', width: Math.round(P.width * .62),
+      x: P.width / 2, y: P.height / 2, scale: 1, rotation: 0, opacity: 1, fadeIn: 0, fadeOut: 0, start: at, end: T, on: true });
+    P.effects.push(Object.assign({ id: uid(), type: 'white', on: true, start: at, end: at + 2 * f }, FX.white));
+    P.audio.forEach(function (a) { a.muffle = Object.assign(a.muffle || {}, { on: true, intensity: a.muffle && a.muffle.intensity ? a.muffle.intensity : .6, start: at, end: Math.max(T, a.at + a.length) }); });
+    ensureMedia(); sel = { kind: 'overlay', id: P.overlays[P.overlays.length - 1].id }; commit(); seek(at);
   }
 
   /* ---------------- selection helpers ---------------- */
@@ -551,6 +567,11 @@
       slider('Speed', 'speed', x, .25, 4, .05, X, function () { if (!x.ramp) x.speedEnd = x.speed; renderTimeline(); seek(t); });
       check('Speed ramp across the clip', 'ramp', x, function () { if (x.ramp && x.speedEnd === x.speed) x.speedEnd = Math.max(.25, x.speed / 2); });
       if (x.ramp) slider('Ends at', 'speedEnd', x, .25, 4, .05, X, function () { renderTimeline(); seek(t); });
+      sec('Motion');
+      if (x.zoomFrom == null) { x.zoomFrom = 1; x.zoomTo = 1; x.panX = 0; x.panY = 0; }
+      slider('Zoom from', 'zoomFrom', x, 1, 2.5, .01, X); slider('Zoom to', 'zoomTo', x, 1, 2.5, .01, X);
+      slider('Pan X', 'panX', x, -1, 1, .01, PC); slider('Pan Y', 'panY', x, -1, 1, .01, PC);
+      btns([['Push in', function () { x.zoomFrom = 1; x.zoomTo = 1.25; commit(); }], ['Pull out', function () { x.zoomFrom = 1.25; x.zoomTo = 1; commit(); }], ['No motion', function () { x.zoomFrom = x.zoomTo = 1; x.panX = x.panY = 0; commit(); }]]);
       sec('Look');
       slider('Exposure', 'grade.exposure', x, -1, 1, .01, PC); slider('Contrast', 'grade.contrast', x, -.5, 1, .01, PC); slider('Saturation', 'grade.saturation', x, -1, 1, .01, PC);
       sec('Fades');
@@ -592,6 +613,7 @@
       if (x.type === 'blur') slider('Amount', 'amount', x, 1, 40, 1, function (v) { return v + 'px'; }, renderTimeline);
       if (x.type === 'grain') slider('Amount', 'amount', x, .05, 1, .01, PC, renderTimeline);
       if (x.type === 'fade') slider('Darkness', 'amount', x, 0, 1, .01, PC);
+      if (x.type === 'white') slider('Brightness', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'grade') { slider('Exposure', 'exposure', x, -1, 1, .01, PC); slider('Contrast', 'contrast', x, -.5, 1, .01, PC); slider('Saturation', 'saturation', x, -1, 1, .01, PC); }
       sec('Timing');
       slider('Starts', 'start', x, 0, total(), 1 / P.fps, S, renderTimeline); slider('Ends', 'end', x, 0, total(), 1 / P.fps, S, renderTimeline);
@@ -662,6 +684,7 @@
   $('addVideo').onclick = addVideos; $('addAudio').onclick = addAudio; $('addImage').onclick = addImage; $('addText').onclick = addText;
   $('ytGo').onclick = youtube; $('ytUrl').onkeydown = function (e) { if (e.key === 'Enter') youtube(); };
   document.querySelectorAll('[data-fx]').forEach(function (b) { b.onclick = function () { addFx(b.dataset.fx); }; });
+  $('outro').onclick = addOutro;
   $('format').onchange = function (e) { var wh = e.target.value.split('x').map(Number); P.width = wh[0]; P.height = wh[1]; sizeStage(); commit(); };
   $('fps').onchange = function (e) { P.fps = +e.target.value; commit(); };
   $('export').onclick = doExport;
