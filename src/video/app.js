@@ -89,6 +89,7 @@
   function ensureMedia() {
     P.clips.forEach(function (c) { videoEl(c); if (c.hasAudio) decode(c); });
     P.overlays.forEach(function (o) { if (o.kind === 'image') imageEl(o); });
+    P.effects.forEach(function (fx) { if (fx.type === 'leak') leakEl(fx); });
     P.audio.forEach(decode);
   }
 
@@ -158,6 +159,8 @@
     P.effects.forEach(function (fx) {
       if (!within(fx, T)) return;
       if (fx.type === 'bw') f.push('grayscale(1) contrast(' + (fx.amount || 2) + ')');
+      if (fx.type === 'invert') f.push('invert(1)');
+      if (fx.type === 'dither') f.push('contrast(1.5) saturate(.6)');
       if (fx.type === 'blur') f.push('blur(' + (fx.amount || 8) * (P.width / 1080) + 'px)');
       if (fx.type === 'grade') f.push('brightness(' + (1 + (fx.exposure || 0) * .5) + ') contrast(' + (1 + (fx.contrast || 0)) + ') saturate(' + (1 + (fx.saturation || 0)) + ')');
     });
@@ -175,6 +178,8 @@
         var mc = a.r.c, mp = Math.max(0, Math.min(1, (T - a.r.start) / Math.max(1e-6, a.r.end - a.r.start)));
         var z = (mc.zoomFrom || 1) + ((mc.zoomTo || 1) - (mc.zoomFrom || 1)) * mp, dw = vw * k * z, dh = vh * k * z;
         var dx = (cv.width - dw) / 2 + (mc.panX || 0) * (dw - cv.width) / 2, dy = (cv.height - dh) / 2 + (mc.panY || 0) * (dh - cv.height) / 2;
+        var sh = P.effects.find(function (fx) { return fx.type === 'shake' && fx.on !== false && within(fx, T); });
+        if (sh) { var amp = (sh.amount || 24) * cv.width / 1080, ex = 1 + 2 * amp / cv.width; dw *= ex; dh *= ex; dx = (cv.width - dw) / 2 + amp * Math.sin(T * 53); dy = (cv.height - dh) / 2 + amp * Math.cos(T * 41); }
         ctx.drawImage(v, dx, dy, dw, dh);
         ctx.filter = 'none';
         var rg = P.effects.find(function (fx) { return fx.type === 'rgb' && fx.on !== false && within(fx, T); });
@@ -200,7 +205,18 @@
         ctx.drawImage(tile, 0, 0, cv.width, cv.height); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       }
       if (fx.type === 'fade' || fx.type === 'white') { ctx.fillStyle = (fx.type === 'white' ? 'rgba(255,255,255,' : 'rgba(0,0,0,') + (fx.amount == null ? 1 : fx.amount) + ')'; ctx.fillRect(0, 0, cv.width, cv.height); }
+      if (fx.type === 'leak') {
+        var lv = leakEl(fx);
+        if (lv && lv.readyState >= 2) {
+          if (playing && lv.paused) lv.play().catch(function () {}); if (!playing && !lv.paused) lv.pause();
+          var lk = Math.max(cv.width / lv.videoWidth, cv.height / lv.videoHeight);
+          ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = fx.amount == null ? .8 : fx.amount;
+          ctx.drawImage(lv, (cv.width - lv.videoWidth * lk) / 2, (cv.height - lv.videoHeight * lk) / 2, lv.videoWidth * lk, lv.videoHeight * lk);
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+        }
+      }
     });
+    P.effects.forEach(function (fx) { if (fx.type === 'leak' && !within(fx, T)) { var lv = leaks[fx.token]; if (lv && !lv.paused) lv.pause(); } });
     P.overlays.forEach(function (o) { if (within(o, T)) drawOverlay(ctx, o, fadeAlpha(o, T)); });
     if (sel && sel.kind === 'overlay') {
       var o = find(sel); if (o && within(o, T)) { var b = overlayBox(o); ctx.strokeStyle = '#0d99ff'; ctx.lineWidth = 3; ctx.setLineDash([12, 8]); ctx.strokeRect(b.x, b.y, b.w, b.h); ctx.setLineDash([]); }
@@ -323,7 +339,24 @@
   }
   var FX = { bw: { name: 'Black & white', amount: 2 }, blur: { name: 'Blur', amount: 8 }, grain: { name: 'Grain', amount: .45 },
     grade: { name: 'Colour grade', exposure: 0, contrast: 0, saturation: 0 }, fade: { name: 'Fade to black', amount: 1 }, white: { name: 'Flash white', amount: 1 },
-    stutter: { name: 'Stutter', amount: 4 }, rgb: { name: 'RGB split', amount: 8 } };
+    stutter: { name: 'Stutter', amount: 4 }, rgb: { name: 'RGB split', amount: 8 }, invert: { name: 'Invert', amount: 1 },
+    dither: { name: 'Dither', amount: 6 }, shake: { name: 'Shake', amount: 24 }, leak: { name: 'Light leak', amount: .8 } };
+  var leaks = {};   // token -> looping <video> for light leak effects
+  function leakEl(fx) {
+    if (!fx.token) return null; if (leaks[fx.token]) return leaks[fx.token];
+    var v = document.createElement('video'); v.crossOrigin = 'anonymous'; v.preload = 'auto'; v.muted = true; v.loop = true; v.playsInline = true; v.src = fx.url;
+    leaks[fx.token] = v; return v;
+  }
+  function addLeak() {
+    if (!need()) return;
+    DESK.pick('video').then(function (list) {
+      list.forEach(function (m) {
+        var r = span(), fx = Object.assign({ id: uid(), type: 'leak', on: true, start: r.start, end: Math.min(total(), r.start + 2), token: m.token, url: m.url, path: m.path }, FX.leak);
+        fx.name = 'Light leak · ' + m.name; P.effects.push(fx); leakEl(fx); sel = { kind: 'effect', id: fx.id };
+      });
+      if (list.length) commit();
+    });
+  }
   function addFx(type) {
     var r = span(), fx = Object.assign({ id: uid(), type: type, on: true, start: r.start, end: r.end }, FX[type]);
     if (type === 'white') fx.end = Math.min(fx.end, fx.start + 2 / P.fps);   // a flash is two frames unless stretched
@@ -631,6 +664,9 @@
       if (x.type === 'fade') slider('Darkness', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'white') slider('Brightness', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'stutter') slider('Hold frames', 'amount', x, 2, 12, 1, PX, renderTimeline);
+      if (x.type === 'dither') slider('Levels', 'amount', x, 2, 16, 1, PX);
+      if (x.type === 'shake') slider('Amount', 'amount', x, 2, 80, 1, function (v) { return v + 'px'; });
+      if (x.type === 'leak') slider('Strength', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'rgb') slider('Split', 'amount', x, 1, 40, 1, function (v) { return v + 'px'; }, renderTimeline);
       if (x.type === 'grade') { slider('Exposure', 'exposure', x, -1, 1, .01, PC); slider('Contrast', 'contrast', x, -.5, 1, .01, PC); slider('Saturation', 'saturation', x, -1, 1, .01, PC); }
       sec('Timing');
@@ -702,7 +738,7 @@
   $('addVideo').onclick = addVideos; $('addAudio').onclick = addAudio; $('addImage').onclick = addImage; $('addText').onclick = addText;
   $('ytGo').onclick = youtube; $('ytUrl').onkeydown = function (e) { if (e.key === 'Enter') youtube(); };
   document.querySelectorAll('[data-fx]').forEach(function (b) { b.onclick = function () { addFx(b.dataset.fx); }; });
-  $('outro').onclick = addOutro;
+  $('outro').onclick = addOutro; $('addLeak').onclick = addLeak;
   $('format').onchange = function (e) { var wh = e.target.value.split('x').map(Number); P.width = wh[0]; P.height = wh[1]; sizeStage(); commit(); };
   $('fps').onchange = function (e) { P.fps = +e.target.value; commit(); };
   $('export').onclick = doExport;

@@ -239,6 +239,30 @@ function buildGraph(P, overlayFiles) {
       fc.push(`${cur}split${S}${L}`);
       fc.push(`${L}fps=${(FPS / k).toFixed(4)},fps=${FPS}${out}`);
       fc.push(`${S}${out}overlay=eof_action=pass:${E(fx)}${mix}`); cur = mix;
+    } else if (fx.type === 'invert') {
+      step(`negate=${E(fx)}`);
+    } else if (fx.type === 'dither') {
+      // crushed, posterised picture with fine noise: reads as dithered print
+      const lv = Math.max(2, Math.round(num(fx.amount, 6))), q = Math.round(256 / lv);
+      step(`lutyuv=y='trunc(val/${q})*${q}+${Math.round(q / 2)}':u='trunc(val/64)*64+32':v='trunc(val/64)*64+32':${E(fx)}`);
+      step(`noise=c0s=18:c0f=u:${E(fx)}`);
+    } else if (fx.type === 'shake') {
+      // the frame jitters inside a slightly larger picture
+      // crop has no enable option, so the shaken copy is overlaid inside the window
+      const a = Math.max(2, Math.round(num(fx.amount, 24) * W / 1080)), m = 2 * a;
+      const S = `[ks${fc.length}]`, L = `[kl${fc.length}]`, out = `[ko${fc.length}]`, mix = `[km${fc.length}]`;
+      fc.push(`${cur}split${S}${L}`);
+      fc.push(`${L}scale=${W + m}:${H + m},crop=${W}:${H}:x='${a}+${a}*sin(t*53)':y='${a}+${a}*cos(t*41)'${out}`);
+      fc.push(`${S}${out}overlay=eof_action=pass:${E(fx)}${mix}`); cur = mix;
+    } else if (fx.type === 'leak') {
+      // a light clip blended over the picture (screen), looped for the whole timeline
+      const file = media.get(fx.token);
+      if (file) {
+        const ix = addInput(file, ['-stream_loop', '-1', '-t', f3(total)]);
+        const L = `[lk${fc.length}]`, mix = `[lm${fc.length}]`;
+        fc.push(`[${ix}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS},setpts=PTS-STARTPTS,format=yuv420p${L}`);
+        fc.push(`${cur}${L}blend=all_mode=screen:all_opacity=${f3(Math.max(0, Math.min(1, num(fx.amount, 0.8))))}:shortest=0:repeatlast=0:${E(fx)}${mix}`); cur = mix;
+      }
     } else if (fx.type === 'rgb') {
       // chromatic split: red one way, blue the other
       const px = Math.max(0, Math.round(num(fx.amount, 8) * W / 1080));
@@ -353,6 +377,7 @@ function init(getWin) {
       for (const c of P.clips || []) await fix(c);
       for (const a of P.audio || []) await fix(a);
       for (const o of P.overlays || []) if (o.kind === 'image') await fix(o);
+      for (const e of P.effects || []) if (e.type === 'leak') await fix(e);
       return P;
     } catch (e) { return null; }
   });
