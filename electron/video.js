@@ -244,7 +244,8 @@ function buildGraph(P, overlayFiles) {
     } else if (fx.type === 'dither') {
       // crushed, posterised picture with fine noise: reads as dithered print
       const lv = Math.max(2, Math.round(num(fx.amount, 6))), q = Math.round(256 / lv);
-      step(`lutyuv=y='trunc(val/${q})*${q}+${Math.round(q / 2)}':u='trunc(val/64)*64+32':v='trunc(val/64)*64+32':${E(fx)}`);
+      // chroma steps are centred on 128 so neutral (and black-and-white) frames stay neutral
+      step(`lutyuv=y='trunc(val/${q})*${q}+${Math.round(q / 2)}':u='clip(128+trunc((val-128)/48)*48,0,255)':v='clip(128+trunc((val-128)/48)*48,0,255)':${E(fx)}`);
       step(`noise=c0s=18:c0f=u:${E(fx)}`);
     } else if (fx.type === 'shake') {
       // the frame jitters inside a slightly larger picture
@@ -269,9 +270,18 @@ function buildGraph(P, overlayFiles) {
       // chromatic split: red one way, blue the other
       const px = Math.max(0, Math.round(num(fx.amount, 8) * W / 1080));
       step(`rgbashift=rh=${px}:bh=${-px}:${E(fx)}`);
-    } else if (fx.type === 'fade' || fx.type === 'white') {
-      const blk = `[fb${fc.length}]`;
-      fc.push(`color=c=${fx.type === 'white' ? 'white' : 'black'}:s=${W}x${H}:r=${FPS}:d=${f3(total)},format=rgba,colorchannelmixer=aa=${f3(num(fx.amount, 1))}${blk}`);
+    } else if (fx.type === 'whip') {
+      // whip pan: the picture smears sideways and slides across the window
+      const amt = Math.max(4, Math.round(num(fx.amount, 60) * W / 1080)), dir = num(fx.dir, 1) < 0 ? -1 : 1;
+      const d = Math.max(0.03, num(fx.end) - num(fx.start)), st = f3(num(fx.start));
+      const S = `[ws${fc.length}]`, L = `[wl${fc.length}]`, out = `[wo${fc.length}]`, mix = `[wm${fc.length}]`;
+      const prog = `clip((t-${st})/${f3(d)},0,1)`, x = dir > 0 ? `(iw-ow)*${prog}` : `(iw-ow)*(1-${prog})`;
+      fc.push(`${cur}split${S}${L}`);
+      fc.push(`${L}scale=${Math.round(W * 1.35)}:${Math.round(H * 1.35)},crop=${W}:${H}:x='${x}':y='(ih-oh)/2',avgblur=sizeX=${amt}:sizeY=1${out}`);
+      fc.push(`${S}${out}overlay=eof_action=pass:${E(fx)}${mix}`); cur = mix;
+    } else if (fx.type === 'fade' || fx.type === 'white' || fx.type === 'burn') {
+      const blk = `[fb${fc.length}]`, col = fx.type === 'white' ? 'white' : fx.type === 'burn' ? '0xFFA23A' : 'black';
+      fc.push(`color=c=${col}:s=${W}x${H}:r=${FPS}:d=${f3(total)},format=rgba,colorchannelmixer=aa=${f3(num(fx.amount, 1))}${blk}`);
       const mix = `[fm${fc.length}]`; fc.push(`${cur}${blk}overlay=${E(fx)}${mix}`); cur = mix;
     }
   });

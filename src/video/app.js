@@ -180,6 +180,12 @@
         var dx = (cv.width - dw) / 2 + (mc.panX || 0) * (dw - cv.width) / 2, dy = (cv.height - dh) / 2 + (mc.panY || 0) * (dh - cv.height) / 2;
         var sh = P.effects.find(function (fx) { return fx.type === 'shake' && fx.on !== false && within(fx, T); });
         if (sh) { var amp = (sh.amount || 24) * cv.width / 1080, ex = 1 + 2 * amp / cv.width; dw *= ex; dh *= ex; dx = (cv.width - dw) / 2 + amp * Math.sin(T * 53); dy = (cv.height - dh) / 2 + amp * Math.cos(T * 41); }
+        var wp = P.effects.find(function (fx) { return fx.type === 'whip' && fx.on !== false && within(fx, T); });
+        if (wp) {   // whip preview: slide across and smear
+          var pr = Math.max(0, Math.min(1, (T - wp.start) / Math.max(.03, wp.end - wp.start))), span = cv.width * .35;
+          dw *= 1.35; dh *= 1.35; dy = (cv.height - dh) / 2; dx = (cv.width - dw) / 2 + ((wp.dir || 1) < 0 ? 1 : -1) * (pr - .5) * span;
+          ctx.filter = (f.join(' ') || '') + ' blur(' + Math.round((wp.amount || 60) * cv.width / 1080 / 3) + 'px)';
+        }
         ctx.drawImage(v, dx, dy, dw, dh);
         ctx.filter = 'none';
         var rg = P.effects.find(function (fx) { return fx.type === 'rgb' && fx.on !== false && within(fx, T); });
@@ -204,7 +210,7 @@
         ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = Math.min(1, (fx.amount || .5));
         ctx.drawImage(tile, 0, 0, cv.width, cv.height); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       }
-      if (fx.type === 'fade' || fx.type === 'white') { ctx.fillStyle = (fx.type === 'white' ? 'rgba(255,255,255,' : 'rgba(0,0,0,') + (fx.amount == null ? 1 : fx.amount) + ')'; ctx.fillRect(0, 0, cv.width, cv.height); }
+      if (fx.type === 'fade' || fx.type === 'white' || fx.type === 'burn') { ctx.fillStyle = (fx.type === 'white' ? 'rgba(255,255,255,' : fx.type === 'burn' ? 'rgba(255,162,58,' : 'rgba(0,0,0,') + (fx.amount == null ? 1 : fx.amount) + ')'; ctx.fillRect(0, 0, cv.width, cv.height); }
       if (fx.type === 'leak') {
         var lv = leakEl(fx);
         if (lv && lv.readyState >= 2) {
@@ -340,7 +346,8 @@
   var FX = { bw: { name: 'Black & white', amount: 2 }, blur: { name: 'Blur', amount: 8 }, grain: { name: 'Grain', amount: .45 },
     grade: { name: 'Colour grade', exposure: 0, contrast: 0, saturation: 0 }, fade: { name: 'Fade to black', amount: 1 }, white: { name: 'Flash white', amount: 1 },
     stutter: { name: 'Stutter', amount: 4 }, rgb: { name: 'RGB split', amount: 8 }, invert: { name: 'Invert', amount: 1 },
-    dither: { name: 'Dither', amount: 6 }, shake: { name: 'Shake', amount: 24 }, leak: { name: 'Light leak', amount: .8 } };
+    dither: { name: 'Dither', amount: 6 }, shake: { name: 'Shake', amount: 24 }, leak: { name: 'Light leak', amount: .8 },
+    whip: { name: 'Whip pan', amount: 60, dir: 1 }, burn: { name: 'Film burn', amount: .85 } };
   var leaks = {};   // token -> looping <video> for light leak effects
   function leakEl(fx) {
     if (!fx.token) return null; if (leaks[fx.token]) return leaks[fx.token];
@@ -665,6 +672,8 @@
       if (x.type === 'white') slider('Brightness', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'stutter') slider('Hold frames', 'amount', x, 2, 12, 1, PX, renderTimeline);
       if (x.type === 'dither') slider('Levels', 'amount', x, 2, 16, 1, PX);
+      if (x.type === 'whip') { slider('Smear', 'amount', x, 4, 160, 1, function (v) { return v + 'px'; }); btns([['Left to right', function () { x.dir = 1; commit(); }], ['Right to left', function () { x.dir = -1; commit(); }]]); }
+      if (x.type === 'burn') slider('Strength', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'shake') slider('Amount', 'amount', x, 2, 80, 1, function (v) { return v + 'px'; });
       if (x.type === 'leak') slider('Strength', 'amount', x, 0, 1, .01, PC);
       if (x.type === 'rgb') slider('Split', 'amount', x, 1, 40, 1, function (v) { return v + 'px'; }, renderTimeline);
