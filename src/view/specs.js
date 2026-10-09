@@ -34,6 +34,7 @@
   var ditherThumbCache = {};
   function ditherThumb(id) {
     if (ditherThumbCache[id]) return ditherThumbCache[id];
+    if (id === 'tenzenOutro') return (ditherThumbCache[id] = root.TenzenOutro.thumbnail());
     var p = DITHER_PRESETS[id].params;
     var bbox = { x: 0, y: 0, width: 46, height: 13 };
     var out;
@@ -124,6 +125,7 @@
    * style inherited one threshold, and on anything with dark clothing or
    * shadow that threshold filled the picture in. */
   var DITHER_PRESETS = {
+    tenzenOutro: { label: 'Tenzen outro preset', tip: 'The Tenzen outro grain and monochrome treatment', params: root.TenzenOutro.defaults },
     stencil: { label: 'One colour', tip: 'One ink, clean edges, detail kept. The place to start on a photo', params: { imageCut: 0.38, imageLevels: 1, grain: 1.2, roughness: 1.4, bias: 0, blotchAmount: 0.35, spatter: 0.08, pit: 0.03, spread: 0, spreadDensity: 0.5, texture: 'none', textureAmount: 0, textureScale: 3, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } },
     screenprint: { label: 'Screen print', tip: 'The same read, with the edge and the mottle a pulled screen actually leaves', params: { imageCut: 0.4, imageLevels: 1, grain: 1.7, roughness: 4.5, bias: 0.4, blotchAmount: 0.7, spatter: 0.28, pit: 0.12, spread: 1.5, spreadDensity: 0.5, texture: 'rough', textureAmount: 0.26, textureScale: 3.2, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } },
     distressed: { label: 'Distressed', tip: 'Chewed and patchy, with crusty holes. Worn into the garment', params: { imageCut: 0.42, imageLevels: 1, grain: 2.6, roughness: 5.5, bias: -0.2, blotchAmount: 0.85, spatter: 0.4, pit: 0.16, spread: 2.5, spreadDensity: 0.45, texture: 'crust', textureAmount: 0.4, textureScale: 5, textureInvert: false, meltRadius: 0, meltCut: 0.5, scale: 1 } },
@@ -290,7 +292,7 @@
         {
           title: 'Dither', id: 'ditherHead', toggleId: '__on',
           rows: [
-            { kind: 'note', text: 'Eats the outline into ink spatter. Real contours, so it ' +
+            { kind: 'note', showIf: 'erosion', text: 'Eats the outline into ink spatter. Real contours, so it ' +
               'stays vector at any size.' }
           ]
         },
@@ -303,8 +305,23 @@
           ]
         },
         {
+          title: 'Tenzen outro preset', showIf: 'outro',
+          rows: [
+            { kind: 'range', id: 'outroContrast', label: 'Contrast', icon: 'tone',
+              min: 1, max: 5, step: 0.1 },
+            { kind: 'range', id: 'outroGrain', label: 'Grain', icon: 'grain',
+              min: 0, max: 0.12, step: 0.002,
+              fmt: function (v) { return (v * 100).toFixed(1) + '%'; },
+              parse: function (v) { return parseFloat(v) / 100; } },
+            { kind: 'range', id: 'outroDarken', label: 'Darken', icon: 'weight',
+              min: 0, max: 0.8, step: 0.01, fmt: pct,
+              parse: function (v) { return parseFloat(v) / 100; } },
+            { kind: 'number', id: 'seed', label: 'Seed', icon: 'seed', min: 1, max: 999999, scrub: 1 }
+          ]
+        },
+        {
           title: 'Photo',
-          showIf: 'photo',
+          showIf: 'erosionPhoto',
           rows: [
             { kind: 'range', id: 'imageCut', label: 'Threshold', icon: 'cutoff',
               min: 0.1, max: 0.85, step: 0.01, fmt: pct,
@@ -317,7 +334,7 @@
           ]
         },
         {
-          title: 'Edge',
+          title: 'Edge', showIf: 'erosion',
           rows: [
             { kind: 'range', id: 'roughness', label: 'Erosion', icon: 'erosion', min: 0, max: 20, step: 0.1,
               tip: 'How far the outline is eaten away. The main dial' },
@@ -331,7 +348,7 @@
           ]
         },
         {
-          title: 'Texture',
+          title: 'Texture', showIf: 'erosion',
           rows: [
             { kind: 'select', id: 'texture', label: 'Texture', icon: 'texture',
               options: textureOptions(),
@@ -346,7 +363,7 @@
           ]
         },
         {
-          title: 'More', id: 'ditherMore', collapsed: true,
+          title: 'More', id: 'ditherMore', collapsed: true, showIf: 'erosion',
           rows: [
             { kind: 'range', id: 'bias', label: 'Weight', icon: 'weight', min: -6, max: 6, step: 0.1,
               tip: 'Push the whole outline in or out. Fattens thin lines the erosion is eating' },

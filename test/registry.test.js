@@ -21,7 +21,8 @@ vm.createContext(sandbox);
 
 ['src/engine/warp.js', 'src/engine/grunge.js', 'src/engine/halftone.js',
  'src/engine/geom.js', 'src/engine/raster.js',
- 'src/doc/effects.js', 'src/doc/model.js', 'src/doc/register-effects.js'
+ 'src/doc/effects.js', 'src/doc/model.js', 'src/doc/register-effects.js',
+ 'src/engine/selective-halftone.js', 'src/doc/register-selective.js'
 ].forEach(function (f) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 });
@@ -38,7 +39,7 @@ function ok(n, c, d) {
 console.log('\nregistry');
 ok('the engines all loaded into one global',
   !!(sandbox.Warp && sandbox.Grunge && sandbox.Halftone && sandbox.Geom && E && Doc));
-ok('three effects, in stack order', E.ids().join(',') === 'warp,dither,halftone', E.ids().join(','));
+ok('four effects, in stack order', E.ids().join(',') === 'warp,dither,halftone,selective', E.ids().join(','));
 
 E.list().forEach(function (def) {
   ok(def.id + ' has a label', !!def.label);
@@ -89,10 +90,10 @@ console.log('\na fresh layer applies nothing');
   var items = [{ d: 'M0 0H100V50H0Z', fill: '#000', stroke: 'none', strokeWidth: 0 }];
   var L = Doc.makeLayer({ items: items, bbox: sandbox.Warp.bounds([items[0].d]) }, 'x');
   Doc.ensureStack(L, E.ids(), E.defaultsFor);
-  ok('the stack has one entry per effect', L.effects.length === 3);
+  ok('the stack has one entry per effect', L.effects.length === 4);
   ok('every entry starts switched off', L.effects.every(function (e) { return !e.on; }));
   ok('the stack is in registry order',
-    L.effects.map(function (e) { return e.type; }).join(',') === 'warp,dither,halftone');
+    L.effects.map(function (e) { return e.type; }).join(',') === 'warp,dither,halftone,selective');
 })();
 
 console.log('\nthe stack is async and ordered');

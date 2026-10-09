@@ -999,12 +999,7 @@ function renderInspector() {
   $('zoneRow').hidden = !zs.length;
   $('zone').innerHTML = zs.map((z) => `<option value="${z.id}" ${z.id === d.zone ? 'selected' : ''}>${z.label}</option>`).join('');
   $('snapBox').style.opacity = d.mode === 'free' ? 0.45 : 1;
-  $('width').value = d.width;
-  $('widthOut').textContent = cm(d.width);
-  $('rotation').value = d.rotation;
-  $('rotOut').textContent = `${d.rotation}°`;
-  $('wrap').value = Math.round(d.wrap * 100);
-  $('wrapOut').textContent = `${Math.round(d.wrap * 100)}%`;
+  ['width', 'rotation', 'wrap'].forEach(id => numericControls[id].show());
   renderInspectorPos();
 }
 function renderInspectorPos() {
@@ -1012,7 +1007,7 @@ function renderInspectorPos() {
   if (!d) return;
   if (d.mode === 'free') $('posOut').textContent = d.mesh.visible ? 'Following the surface' : 'Not on the model, drag it back on';
   else $('posOut').textContent = `x ${cm(d.a)} · y ${cm(d.b)}${d.mesh.visible ? '' : ' · off the model'}`;
-  $('widthOut').textContent = cm(d.width);
+  numericControls.width.show();
 }
 
 // inspector controls
@@ -1020,13 +1015,24 @@ $('mode').addEventListener('change', () => { const d = state.selected; setMode(d
 $('zone').addEventListener('change', () => { const d = state.selected; d.zone = $('zone').value; const z = zoneById(d.zone); d.a = z.cx; d.b = z.cy; rebuildDecal(d); pushHistory(); renderInspector(); renderDecalList(); updateZoneVisibility(); });
 $('snapBox').addEventListener('click', (ev) => { const k = ev.target.dataset?.snap; if (k && state.selected) snap(state.selected, k); });
 $('magnet').addEventListener('change', () => { state.magnet = $('magnet').checked; });
-for (const [id, apply] of [
-  ['width', (d, v) => { d.width = v; }],
-  ['rotation', (d, v) => { d.rotation = v; }],
-  ['wrap', (d, v) => { d.wrap = v / 100; }],
+const numericControls = {};
+function numberControl(id, outId, options) {
+  numericControls[id] = window.NumericControl.bind($(id), $(outId), options);
+}
+for (const def of [
+  { id: 'width', out: 'widthOut', label: 'Width', min: 0.02, rangeMax: 1.6, step: 0.001,
+    format: v => window.NumericControl.format(v * (state.garment?.cmPerUnit || 45)) + ' cm',
+    parse: text => window.NumericControl.read(text, state.garment?.cmPerUnit || 45, 'cm') },
+  { id: 'rotation', out: 'rotOut', label: 'Rotation', min: -180, max: 180, step: 1, unit: '°',
+    format: v => window.NumericControl.format(v) + '°' },
+  { id: 'wrap', out: 'wrapOut', label: 'Wrap around curves', min: 20, max: 250, step: 5, unit: '%',
+    format: v => window.NumericControl.format(v) + '%' }
 ]) {
-  $(id).addEventListener('input', () => { const d = state.selected; if (!d) return; apply(d, parseFloat($(id).value)); rebuildDecal(d); renderInspector(); });
-  $(id).addEventListener('change', pushHistory);
+  numberControl(def.id, def.out, { ...def,
+    get: () => state.selected ? state.selected[def.id] * (def.id === 'wrap' ? 100 : 1) : undefined,
+    set: v => { const d = state.selected; if (!d) return; d[def.id] = v / (def.id === 'wrap' ? 100 : 1); rebuildDecal(d); renderInspector(); },
+    commit: pushHistory,
+  });
 }
 $('dupBtn').addEventListener('click', () => state.selected && duplicateDecal(state.selected));
 $('delBtn').addEventListener('click', () => state.selected && deleteDecal(state.selected));
@@ -1040,13 +1046,17 @@ function reorder(delta) {
 $('upBtn').addEventListener('click', () => reorder(1));
 $('downBtn').addEventListener('click', () => reorder(-1));
 
-// fabric sliders
-$('strength').addEventListener('input', () => { state.strength = $('strength').value / 100; $('strengthOut').textContent = `${$('strength').value}%`; });
-$('strength').addEventListener('change', refreshFabrics);
-$('texScale').addEventListener('input', () => { state.texScale = $('texScale').value / 100; $('scaleOut').textContent = `${(state.texScale).toFixed(2).replace(/\.?0+$/, '')}x`; });
-$('texScale').addEventListener('change', refreshFabrics);
-$('contrast').addEventListener('input', () => { state.contrast = $('contrast').value / 100; $('contrastOut').textContent = `${$('contrast').value}%`; });
-$('contrast').addEventListener('change', refreshFabrics);
+// Fabric values are editable in the same units shown beside each slider.
+for (const def of [
+  { id: 'strength', out: 'strengthOut', label: 'Texture strength', max: 200, unit: '%' },
+  { id: 'texScale', out: 'scaleOut', label: 'Texture scale', min: 25, max: 300, step: 25, unit: 'x',
+    format: v => window.NumericControl.format(v / 100) + 'x', parse: text => window.NumericControl.read(text, 0.01, 'x') },
+  { id: 'contrast', out: 'contrastOut', label: 'Wash contrast', max: 250, unit: '%' }
+]) {
+  numberControl(def.id, def.out, { min: 0, step: 1, format: v => window.NumericControl.format(v) + '%', ...def,
+    get: () => state[def.id] * 100, set: v => { state[def.id] = v / 100; }, commit: refreshFabrics,
+  });
+}
 $('showZones').addEventListener('change', () => { state.showZones = $('showZones').checked; updateZoneVisibility(); });
 document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => (preview.visible ? preview.orbit(b.dataset.view) : frameCamera(b.dataset.view))));
 $('exportRes').addEventListener('change', changed);

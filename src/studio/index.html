@@ -9,6 +9,7 @@
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
+<link rel="stylesheet" href="../view/numeric-control.css">
 </head>
 <body>
 <header class="topbar">
@@ -43,15 +44,15 @@
       <h2>Fabric</h2>
       <div id="parts"></div>
       <div class="row">
-        <label>Texture strength <output id="strengthOut">100%</output></label>
+        <label>Texture strength <input id="strengthOut" type="text" inputmode="decimal" value="100%"></label>
         <input type="range" id="strength" min="0" max="200" value="100">
       </div>
       <div class="row">
-        <label>Texture scale <output id="scaleOut">1x</output></label>
+        <label>Texture scale <input id="scaleOut" type="text" inputmode="decimal" value="1x"></label>
         <input type="range" id="texScale" min="25" max="300" step="25" value="100">
       </div>
       <div class="row" id="contrastRow">
-        <label>Wash contrast <output id="contrastOut">100%</output></label>
+        <label>Wash contrast <input id="contrastOut" type="text" inputmode="decimal" value="100%"></label>
         <input type="range" id="contrast" min="0" max="250" value="100">
       </div>
     </section>
@@ -124,15 +125,15 @@
           <label class="toggle small"><input type="checkbox" id="magnet" checked> Magnetic snapping while dragging</label>
         </div>
         <div class="row">
-          <label>Width <output id="widthOut"></output></label>
+          <label>Width <input id="widthOut" type="text" inputmode="decimal" value=""></label>
           <input type="range" id="width" min="0.02" max="1.6" step="0.001">
         </div>
         <div class="row">
-          <label>Rotation <output id="rotOut">0°</output></label>
+          <label>Rotation <input id="rotOut" type="text" inputmode="decimal" value="0°"></label>
           <input type="range" id="rotation" min="-180" max="180" step="1" value="0">
         </div>
         <div class="row">
-          <label title="How far the print wraps around curves (sleeves, brim). Raise it if edges go missing.">Wrap around curves <output id="wrapOut">100%</output></label>
+          <label title="How far the print wraps around curves (sleeves, brim). Raise it if edges go missing.">Wrap around curves <input id="wrapOut" type="text" inputmode="decimal" value="100%"></label>
           <input type="range" id="wrap" min="20" max="250" step="5" value="100">
         </div>
         <div class="row pos">
@@ -160,6 +161,7 @@
   </aside>
 </main>
 <div class="toast" id="toast" hidden></div>
+<script src="../view/numeric-control.js"></script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

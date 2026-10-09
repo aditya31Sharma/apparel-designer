@@ -165,6 +165,7 @@
         c.save();
         var m = L.matrix;
         c.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+        (L.clips || []).forEach(function (clip) { c.clip(clip.path); });
         c.globalAlpha = L.opacity === undefined ? 1 : L.opacity;
 
         // A photo nothing has been applied to yet. Drawn at its frame, under

@@ -6,6 +6,8 @@
 <title>Tenzen Studio</title>
 <link rel="icon" href="src/view/brand.png">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="src/view/selective-halftone.css">
+<link rel="stylesheet" href="src/view/numeric-control.css">
 </head>
 <body>
 
@@ -40,6 +42,7 @@
     <button class="tool" id="tool-warp" data-icon="warp"><span>Warp</span></button>
     <button class="tool" id="tool-dither" data-icon="dither"><span>Dither</span></button>
     <button class="tool" id="tool-halftone" data-icon="halftone"><span>Halftone</span></button>
+    <button class="tool" id="tool-selective" data-icon="halftone"><span>Selective half-tone</span></button>
   </div>
 
   <span class="sep"></span>
@@ -92,6 +95,7 @@
       <div id="panel-warp" class="epanel"></div>
       <div id="panel-dither" class="epanel"></div>
       <div id="panel-halftone" class="epanel"></div>
+      <div id="panel-selective" class="epanel"></div>
       <div id="panel-more"></div>
       <div class="sec">
         <h2>Snapping</h2>
@@ -134,16 +138,21 @@
 <script src="src/engine/halftone.js"></script>
 <script src="src/engine/geom.js"></script>
 <script src="src/engine/raster.js"></script>
+<script src="src/engine/tenzen-outro.js"></script>
+<script src="src/engine/selective-halftone.js"></script>
 <script src="src/engine/importer.js"></script>
 <script src="src/engine/snap.js"></script>
 <script src="src/doc/model.js"></script>
 <script src="src/doc/effects.js"></script>
 <script src="src/doc/register-effects.js"></script>
+<script src="src/doc/register-selective.js"></script>
 <script src="src/export/svg.js"></script>
 <script src="src/view/specs.js"></script>
+<script src="src/view/numeric-control.js"></script>
 <script src="src/view/controls.js"></script>
 <script src="src/view/viewport.js"></script>
 <script src="src/view/overlay.js"></script>
+<script src="src/view/selective-halftone.js"></script>
 <script src="src/view/chrome.js"></script>
 <script src="src/view/mobile.js"></script>
 <script src="src/view/updater.js"></script>

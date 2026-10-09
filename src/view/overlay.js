@@ -95,7 +95,7 @@
           'stroke-dasharray': '3 3', opacity: 0.85
         }));
         wp.forEach(function (p, i) { gHandles.appendChild(dot(p, i, 'corner', 'move')); });
-      } else {
+      } else if (api.mode !== 'selective') {
         HANDLES.forEach(function (h, i) {
           var p = toScreen(handlePoint(h));
           gHandles.appendChild(rotZone(p, h));

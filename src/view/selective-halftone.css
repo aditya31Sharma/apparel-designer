@@ -1,0 +1,27 @@
+#panel-selective button,#panel-selective select{font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:4px;min-height:26px;padding:3px 8px}
+#panel-selective button:hover{border-color:var(--muted)}
+#panel-selective button:focus-visible,#panel-selective input:focus-visible,#panel-selective select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#panel-selective .sw{min-height:14px;padding:0;border:0}
+#panel-selective .sw.on{background:var(--accent)}
+.selective-add,.selective-actions{display:flex;gap:6px;margin-top:10px}
+.selective-add select{flex:1;min-width:0}
+.selective-add button{white-space:nowrap}
+.selective-list{display:grid;gap:5px;margin-top:8px}
+.selective-fade{display:flex;gap:4px}
+.selective-fade button[data-action="select"]{flex:1;text-align:left}
+#panel-selective .selective-fade button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--field))}
+.selective-actions button{flex:1}
+#panel-selective .num{width:70px;text-align:right}
+#panel-selective .note{line-height:1.6}
+#panel-selective [hidden]{display:none}
+#stage #overlay .selective-hit{pointer-events:all;cursor:move;touch-action:none}
+#stage #overlay .selective-hit:focus-visible{outline:none;stroke:var(--accent);stroke-width:2}
+body.mobile .sheet-head .tools{flex-wrap:wrap}
+body.mobile .sheet-head #tool-selective{flex-basis:100%}
+@media(max-width:1250px){
+  body:not(.mobile):not(.mode-video):not(.mode-3d) header{height:70px;flex-wrap:wrap;align-content:center}
+  body:not(.mobile):not(.mode-video):not(.mode-3d) header .tools{order:2;flex:none;width:100%;margin-top:2px}
+  body:not(.mobile):not(.mode-video):not(.mode-3d) header .fname,
+  body:not(.mobile):not(.mode-video):not(.mode-3d) header .stats,
+  body:not(.mobile):not(.mode-video):not(.mode-3d) header .brand b{display:none}
+}

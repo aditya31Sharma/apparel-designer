@@ -40,57 +40,21 @@
       var slider = node.querySelector('input[type=range]');
       var num = node.querySelector('.num');
       var step = row.step || 1;
-      var scale = 1 / step;
-      slider.min = Math.round(row.min * scale);
-      slider.max = Math.round(row.max * scale);
-      slider.step = 1;
-
-      var fmt = row.fmt || function (v) {
-        return step < 1 ? v.toFixed(String(step).split('.')[1].length) : String(v);
-      };
-      function show(v) { slider.value = Math.round(v * scale); num.value = fmt(v); }
-
-      slider.addEventListener('input', function () {
-        api.set(row.id, +this.value / scale, true);
-        num.value = fmt(+this.value / scale);
+      var fmt = row.fmt || function (v) { return root.NumericControl.format(v); };
+      var unit = (fmt(1).match(/[a-z%°]+$/i) || [''])[0];
+      if (unit) fmt = function (v) { return root.NumericControl.format(v * (unit === '%' ? 100 : 1)) + unit; };
+      var control = root.NumericControl.bind(slider, num, {
+        label: row.label, min: row.min, max: row.max, rangeMin: row.rangeMin, rangeMax: row.rangeMax,
+        step: step, integer: row.id === 'seed' || row.id === 'imageLevels', format: fmt,
+        unit: unit, scale: unit === '%' ? 100 : 1,
+        get: function () { return api.get(row.id); }, begin: api.begin,
+        set: function (v) { api.set(row.id, v, true); }, commit: function () { api.commit(row.id); }
       });
-      slider.addEventListener('change', function () { api.commit(row.id); });
-      num.addEventListener('change', function () {
-        var v = parseFloat(this.value);
-        if (isNaN(v)) { show(api.get(row.id)); return; }
-        v = Math.max(row.min, Math.min(row.max, v));
-        show(v); api.set(row.id, v); api.commit(row.id);
-      });
-      return { node: node, show: show };
+      return { node: node, show: function () { control.show(); } };
     },
 
     number: function (row, api) {
-      var node = el(
-        '<div class="pr"' + tipAttr(row) + '>' + icon(row.icon) +
-        '<span class="lbl">' + row.label + '</span>' +
-        '<input class="num wide" type="text" inputmode="decimal">' +
-        '<span class="grow"></span></div>');
-      var num = node.querySelector('.num');
-      var fmt = row.fmt || function (v) { return String(Math.round(v * 100) / 100); };
-      function show(v) {
-        if (document.activeElement === num) return;
-        num.value = (v === undefined || v === null || v !== v) ? '' : fmt(v);
-      }
-      num.addEventListener('change', function () {
-        var v = parseFloat(this.value);
-        if (isNaN(v)) { show(api.get(row.id)); return; }
-        if (row.min !== undefined) v = Math.max(row.min, v);
-        if (row.max !== undefined) v = Math.min(row.max, v);
-        show(v); api.set(row.id, v); api.commit(row.id);
-      });
-      // Figma's scrub: drag the label to change the value.
-      scrub(node.querySelector('.lbl'), function (dx) {
-        var v = api.get(row.id) + dx * (row.scrub || 1);
-        if (row.min !== undefined) v = Math.max(row.min, v);
-        if (row.max !== undefined) v = Math.min(row.max, v);
-        show(v); api.set(row.id, v, true);
-      }, function () { api.commit(row.id); });
-      return { node: node, show: show };
+      return KINDS.range(Object.assign({ step: row.scrub || 1 }, row), api);
     },
 
     toggle: function (row, api) {
@@ -241,43 +205,22 @@
 
     /* Two numbers side by side: X and Y, W and H. */
     pair: function (row, api) {
-      var node = el(
-        '<div class="pr pair"' + tipAttr(row) + '>' +
-        '<span class="lbl2">' + row.a.label + '</span>' +
-        '<input class="num" data-k="a" type="text" inputmode="decimal">' +
-        '<span class="lbl2">' + row.b.label + '</span>' +
-        '<input class="num" data-k="b" type="text" inputmode="decimal">' +
-        (row.lock ? '<button class="tbtn lockbtn" data-tip="Lock ratio|Keep width and height in proportion">' +
-          (ICON.lock || '') + '</button>' : '') + '</div>');
-      var ia = node.querySelector('[data-k=a]'), ib = node.querySelector('[data-k=b]');
-      var lockBtn = node.querySelector('.lockbtn');
-      // With nothing loaded there is no value to show. Blank, not NaN.
-      var fmt = row.fmt || function (v) { return String(Math.round(v * 100) / 100); };
-      var safe = function (v) { return (v === undefined || v === null || v !== v) ? '' : fmt(v); };
-
+      var node = el('<div class="numeric-pair"' + tipAttr(row) + '></div>');
+      var children = [row.a, row.b].map(function (field) {
+        var size = /width|height/.test(field.id);
+        var child = KINDS.range(Object.assign({ step: 0.1, min: size ? 0.01 : undefined,
+          rangeMin: size ? 1 : -2000, rangeMax: size ? 4000 : 2000 }, field), api);
+        node.appendChild(child.node); return child;
+      });
+      var lockBtn;
+      if (row.lock) {
+        lockBtn = el('<button class="tbtn lockbtn" aria-label="Lock ratio" data-tip="Lock ratio|Keep width and height in proportion">' + (ICON.lock || '') + '</button>');
+        children[0].node.querySelector('.gi').replaceWith(lockBtn);
+        lockBtn.addEventListener('click', function () { api.set(row.lock, !api.get(row.lock)); api.commit(row.lock); show(); });
+      }
       function show() {
-        if (document.activeElement !== ia) ia.value = safe(api.get(row.a.id));
-        if (document.activeElement !== ib) ib.value = safe(api.get(row.b.id));
+        children.forEach(function (child) { child.show(); });
         if (lockBtn) lockBtn.classList.toggle('on', !!api.get(row.lock));
-      }
-      function commitField(input, id) {
-        input.addEventListener('change', function () {
-          var v = parseFloat(this.value);
-          if (isNaN(v)) { show(); return; }
-          api.set(id, v); api.commit(id); show();
-        });
-      }
-      commitField(ia, row.a.id); commitField(ib, row.b.id);
-      scrub(node.querySelectorAll('.lbl2')[0], function (dx) {
-        api.set(row.a.id, api.get(row.a.id) + dx * (row.scrub || 1), true); show();
-      }, function () { api.commit(row.a.id); });
-      scrub(node.querySelectorAll('.lbl2')[1], function (dx) {
-        api.set(row.b.id, api.get(row.b.id) + dx * (row.scrub || 1), true); show();
-      }, function () { api.commit(row.b.id); });
-      if (lockBtn) {
-        lockBtn.addEventListener('click', function () {
-          api.set(row.lock, !api.get(row.lock)); api.commit(row.lock); show();
-        });
       }
       return { node: node, show: show, pair: true };
     }

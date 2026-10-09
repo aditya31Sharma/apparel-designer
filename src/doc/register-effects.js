@@ -77,6 +77,7 @@
     },
     run: function (input, p, ctx) {
       if (!ctx.maskFromPaths) return null;
+      if (p.preset === 'tenzenOutro') return root.TenzenOutro.run(input, p, ctx);
       // A photo has no outline to erode, so trace its dark areas into one first.
       // Without this the dither would faithfully erode the bounding rectangle.
       var traced = needsTrace(input, ctx);

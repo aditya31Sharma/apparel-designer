@@ -1,0 +1,14 @@
+input.numeric-value{font:inherit;font-variant-numeric:tabular-nums;color:var(--ink2);width:64px;min-width:0;flex:none;text-align:right;padding:4px 5px;background:var(--field);border:1px solid var(--line2);border-radius:4px}
+input.numeric-value:focus{outline:1px solid var(--accent);border-color:var(--accent);color:var(--ink)}
+input.numeric-value:disabled,input.numeric-range:disabled{opacity:.45}
+input.numeric-range,.pr input.numeric-range[type=range]{height:20px;min-width:36px;margin:0;background:transparent;cursor:ew-resize;appearance:none;-webkit-appearance:none}
+input.numeric-range::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:var(--line2)}
+input.numeric-range::-webkit-slider-thumb,.pr input.numeric-range[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--ink);margin-top:-4.5px;cursor:ew-resize}
+input.numeric-range:focus-visible{outline:1px solid var(--accent);outline-offset:2px;border-radius:4px}
+.numeric-pair .pr{margin-bottom:3px}
+.numeric-pair .lockbtn{width:20px;height:20px;flex:none;padding:0}
+#panel-selective .selective-number .lbl{width:58px;flex:none}
+#panel-selective .selective-number .numeric-value{width:72px}
+.insp .row:has(.numeric-value){grid-template-columns:70px minmax(36px,1fr) 68px}
+.insp .row input.numeric-value{width:100%}
+.panel .row label input.numeric-value{width:76px;margin-top:-4px;margin-bottom:-4px}

@@ -17,8 +17,11 @@ importScripts(
   '../engine/halftone.js',
   '../engine/geom.js',
   '../engine/raster.js',
+  '../engine/tenzen-outro.js',
+  '../engine/selective-halftone.js',
   '../doc/effects.js',
-  '../doc/register-effects.js'
+  '../doc/register-effects.js',
+  '../doc/register-selective.js'
 );
 
 var generation = 0;
@@ -284,6 +287,7 @@ function send(msg, run) {
     if (msg.generation !== generation) return;   // a newer job already started
 
     var transfer = self.Geom ? self.Geom.transferables(out.items || []) : [];
+    if (out.photo) transfer.push(out.photo.data.buffer);
     var plates = (out.plates || []).map(function (pl) {
       transfer.push(pl.dots.buffer);
       return { key: pl.key, label: pl.label, colour: pl.colour, dots: pl.dots };
@@ -293,6 +297,8 @@ function send(msg, run) {
       kind: 'done',
       generation: msg.generation,
       items: out.items || [],
+      photo: out.photo || null,
+      clips: out.clips || [],
       plates: plates,
       mode: out.mode,
       pattern: out.pattern,

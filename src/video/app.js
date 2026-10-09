@@ -589,11 +589,16 @@
   function slider(label, key, obj, min, max, step, fmtv, after) {
     var id = 'f' + uid(), val = key.split('.').reduce(function (o, k) { return o[k]; }, obj);
     var d = document.createElement('div'); d.className = 'row';
-    d.innerHTML = '<span class="lbl">' + label + '</span><input type="range" id="' + id + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '"><span class="v">' + fmtv(val) + '</span>';
+    d.innerHTML = '<span class="lbl">' + label + '</span><input type="range" id="' + id + '"><input class="v" type="text" inputmode="decimal">';
     var inp = d.querySelector('input'), out = d.querySelector('.v');
+    var get = function () { return key.split('.').reduce(function (o, k) { return o[k]; }, obj); };
     var set = function (v) { var ks = key.split('.'), o = obj; for (var i = 0; i < ks.length - 1; i++) o = o[ks[i]]; o[ks[ks.length - 1]] = v; };
-    inp.oninput = function () { set(+inp.value); out.textContent = fmtv(+inp.value); if (after) after(); draw(); };
-    inp.onchange = function () { commit(); };
+    var control = window.NumericControl.bind(inp, out, {
+      label: label, min: min, max: max, step: step, format: fmtv, scale: fmtv === PC ? 100 : 1,
+      unit: (fmtv(1).match(/[a-z%°]+$/i) || [''])[0], get: get,
+      set: function (v) { set(v); if (after) after(); draw(); }, commit: commit
+    });
+    d.syncValue = control.show;
     d.dataset.key = key; I.appendChild(d); return d;
   }
   function check(label, key, obj, after) {
@@ -605,13 +610,13 @@
   function head(txt) { var h = document.createElement('h2'); h.textContent = txt; I.appendChild(h); }
   function sec(txt) { var s = document.createElement('div'); s.className = 'sec'; I.appendChild(s); head(txt); }
   function btns(list) { var d = document.createElement('div'); d.className = 'btns'; list.forEach(function (b) { var x = document.createElement('button'); x.textContent = b[0]; x.onclick = b[1]; d.appendChild(x); }); I.appendChild(d); }
-  var S = function (x) { return (+x).toFixed(2) + 's'; }, PC = function (x) { return Math.round(x * 100) + '%'; }, X = function (x) { return (+x).toFixed(2) + 'x'; }, PX = function (x) { return Math.round(x) + ''; };
+  var S = function (x) { return window.NumericControl.format(x, 3) + 's'; }, PC = function (x) { return window.NumericControl.format(x * 100) + '%'; }, X = function (x) { return window.NumericControl.format(x) + 'x'; }, PX = function (x) { return window.NumericControl.format(x); };
   function inspector(soft) {
     var x = find(sel);
     if (soft && x && I.dataset.sel === sel.kind + sel.id) {   // live values only, keep focus
       I.querySelectorAll('.row').forEach(function (r) {
         var k = r.dataset.key; if (!k) return; var v = k.split('.').reduce(function (o, q) { return o && o[q]; }, x);
-        if (v == null) return; var inp = r.querySelector('input'); inp.value = v; r.querySelector('.v').textContent = (k === 'at' || k === 'start' || k === 'end' || k === 'length' || k === 'from') ? S(v) : r.querySelector('.v').textContent;
+        if (v != null && r.syncValue) r.syncValue();
       });
       return;
     }

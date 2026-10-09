@@ -67,7 +67,7 @@
     var prec = o.precision === undefined ? 2 : o.precision;
     var b = documentBounds(renders);
     var maxStroke = 0;
-    var body = [];
+    var body = [], defs = [];
 
     renders.forEach(function (R) {
       var tf = matrixAttr(R.matrix, prec);
@@ -118,7 +118,12 @@
         }
       }
 
-      if (parts.length) body.push(open, parts.join('\n'), '  </g>');
+      var masks = (R.clips || []).map(function (clip) {
+        var id = 'selective-mask-' + defs.length;
+        defs.push('  <clipPath id="' + id + '" clipPathUnits="userSpaceOnUse"><path d="' + clip.d + '"/></clipPath>');
+        return '<g clip-path="url(#' + id + ')">';
+      });
+      if (parts.length) body.push(open, masks.join(''), parts.join('\n'), masks.map(function () { return '</g>'; }).join(''), '  </g>');
     });
 
     var pad = 1 + maxStroke / 2;
@@ -131,7 +136,7 @@
       ? '\n  <rect x="' + vb[0] + '" y="' + vb[1] + '" width="' + vb[2] +
         '" height="' + vb[3] + '" fill="' + o.background + '"/>'
       : '';
-    return head + bg + '\n' + body.join('\n') + '\n</svg>\n';
+    return head + (defs.length ? '\n<defs>\n' + defs.join('\n') + '\n</defs>' : '') + bg + '\n' + body.join('\n') + '\n</svg>\n';
   }
 
   root.SvgOut = { build: build, platePath: platePath, documentBounds: documentBounds };

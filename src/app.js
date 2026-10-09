@@ -19,7 +19,7 @@
 
   var doc = Doc.makeDoc();
   var history = Doc.History(80);
-  var viewport, overlay, panels = {}, worker = null;
+  var viewport, overlay, selectiveView, panels = {}, worker = null;
   var generation = 0, pending = null;
   var pixelsSent = null;          // which layer's pixels the worker already holds
   var lastPool = 1;
@@ -243,7 +243,15 @@
       });
     }
 
+    var photo = null;
+    if (out.photo) {
+      photo = document.createElement('canvas');
+      photo.width = out.photo.w; photo.height = out.photo.h;
+      photo.getContext('2d').putImageData(new ImageData(out.photo.data, out.photo.w, out.photo.h), 0, 0);
+    }
     renders[layer.id] = {
+      image: photo,
+      clips: (out.clips || []).map(function (clip) { return { d: clip.d, path: new Path2D(clip.d) }; }),
       shapes: shapes, plates: plates, mode: out.mode,
       pattern: out.pattern, fuzziness: out.fuzziness, seed: out.seed,
       bbox: out.bbox || layer.source.bbox
@@ -256,6 +264,7 @@
     showStats(stats, ms, shapes, plates, out.pattern, untouched ? {
       width: Math.round(layer.source.bbox.width),
       height: Math.round(layer.source.bbox.height),
+      label: stats.selective ? Effects.get('selective').label : photo ? DITHER_PRESETS.tenzenOutro.label : null,
       uri: imageUriFor(layer)
     } : null, out.fuzziness);
     paint();
@@ -313,11 +322,11 @@
       var box0 = $('stats');
       if (box0) {
         box0.textContent = 'photo  ·  ' + fmtN(raw.width) + ' x ' + fmtN(raw.height) +
-          '  ·  nothing applied';
+          '  ·  ' + (raw.label || 'nothing applied');
       }
       var size0 = $('exportSize');
       if (size0) {
-        var bytes = raw.uri ? Math.round(raw.uri.length * 0.75) : 0;
+        var bytes = (raw.uri ? Math.round(raw.uri.length * 0.75) : 0) + (stats.selective ? stats.selective.bytes : 0);
         size0.textContent = bytes ? '~' + fmtBytes(bytes) : '';
         size0.classList.toggle('heavy', bytes > 8 * 1048576);
       }
@@ -334,10 +343,11 @@
       bits.push(Math.round(s.halftone.pitch * 10) / 10 + 'px pitch');
     }
     if (s.dither) bits.push(fmtN(s.dither.shapes) + ' contours');
+    if (s.selective) bits.push(s.selective.fades + ' fades');
     if (ms !== undefined) bits.push(ms + 'ms');
     if (lastPool > 1) bits.push(lastPool + ' threads');
 
-    var est = estimateBytes(shapes, plates, pattern, fuzziness);
+    var est = estimateBytes(shapes, plates, pattern, fuzziness) + (s.selective ? s.selective.bytes : 0);
     var box = $('stats');
     if (box) box.textContent = bits.join('  ·  ');
     var size = $('exportSize');
@@ -360,7 +370,7 @@
       if (raw) {
         scene.layers.push({
           matrix: Doc.layerMatrix(L), opacity: L.paint.opacity,
-          image: raw, bbox: r.bbox
+          image: raw, bbox: r.bbox, clips: r.clips
         });
         return;
       }
@@ -377,14 +387,16 @@
         }),
         plates: inkPlates(L, r),
         blend: plateBlend(r),
+        clips: r.clips,
         bbox: r.bbox
       });
     });
     viewport.setScene(scene);
     overlay.layer = Doc.selected(doc);
     overlay.view = viewport.view;
-    overlay.mode = tool === 'warp' ? 'warp' : 'transform';
+    overlay.mode = tool === 'warp' ? 'warp' : tool === 'selective' ? 'selective' : 'transform';
     overlay.draw();
+    if (selectiveView) selectiveView.draw(tool === 'selective');
     syncHud();
   }
 
@@ -461,6 +473,7 @@
    * outlines. So as long as what came back is still the frame, there is nothing
    * to draw but the picture, and the picture is what should be drawn. */
   function untouchedImage(L, r) {
+    if (r && r.image) return r.image;
     if (!L.source.bitmap || !r || r.plates) return null;
     if (!r.shapes || !r.shapes.length) return null;
     for (var i = 0; i < r.shapes.length; i++) if (!r.shapes[i].frame) return null;
@@ -483,6 +496,7 @@
    * own fields or the current effect's params, so the spec entries stay flat. */
   function apiFor(scope) {
     return {
+      begin: function () { history.push(doc); },
       get: function (id) {
         // The canvas belongs to the view, not to any layer, so it is there
         // with nothing loaded.
@@ -510,6 +524,10 @@
         }
         if (id === 'lockRatio') { L.lockRatio = v; overlay.lockRatio = v; return; }
         if (id === 'invert') { setInvert(L, v); return; }
+        if (scope === 'layer' && L.lockRatio && (id === 'transform.width' || id === 'transform.height')) {
+          var dimension = id.split('.')[1], other = dimension === 'width' ? 'height' : 'width';
+          if (L.transform[dimension] > 0) L.transform[other] *= v / L.transform[dimension];
+        }
         writePath(scope === 'layer' ? L : Doc.effect(L, scope).params, id, v);
         if (scope !== 'layer') { onParamChanged(scope, id, v); markDirty(live); return; }
         if (id.indexOf('paint.') === 0) {
@@ -561,6 +579,7 @@
           next.imageCut = Math.max(0.1, Math.min(0.85, auto + (next.imageCut - 0.4)));
         }
         Object.assign(p, next);
+        if (v === 'tenzenOutro') Doc.effect(L, 'dither').on = true;
       }
       // Choosing Import asks for the file rather than silently doing nothing.
       if (id === 'texture' && v === 'image' && !textureImage) $('textureFile').click();
@@ -578,6 +597,9 @@
     if (cond === 'notexture') return !p.texture || p.texture === 'none';
     // The tone controls only mean anything when there is a photo to threshold.
     if (cond === 'photo') return !!L.source.pixels;
+    if (cond === 'outro') return p.preset === 'tenzenOutro';
+    if (cond === 'erosion') return p.preset !== 'tenzenOutro';
+    if (cond === 'erosionPhoto') return !!L.source.pixels && p.preset !== 'tenzenOutro';
     if (cond === 'vector') return !L.source.pixels;
     return true;
   }
@@ -603,6 +625,7 @@
 
   function syncPanels() {
     Object.keys(panels).forEach(function (k) { panels[k].sync(); });
+    if (selectiveView) selectiveView.sync();
     syncChrome();
     // Controls that act on a layer read as live until there is one.
     var has = !!Doc.selected(doc);
@@ -806,6 +829,11 @@
   var imageUris = {};
 
   function imageUriFor(L) {
+    var rendered = renders[L.id];
+    if (rendered && rendered.image) {
+      if (!rendered.uri) rendered.uri = rendered.image.toDataURL('image/png');
+      return rendered.uri;
+    }
     var img = mattedBitmap(L);
     if (!img) return null;
     // Keyed on the matte too: a cut-out is a different picture.
@@ -838,7 +866,7 @@
         return {
           name: L.name, matrix: Doc.layerMatrix(L), bbox: r.bbox,
           opacity: L.paint.opacity, shapes: [], plates: null,
-          image: imageUriFor(L)
+          image: imageUriFor(L), clips: r.clips
         };
       }
       return {
@@ -856,6 +884,7 @@
         }),
         plates: inkPlates(L, r),
         blend: plateBlend(r),
+        clips: r.clips,
         pattern: r.pattern, fuzziness: r.fuzziness, seed: r.seed
       };
     }).filter(Boolean);
@@ -875,6 +904,7 @@
       onViewChange: function () {
         overlay.view = viewport.view;
         overlay.draw();
+        if (selectiveView) selectiveView.draw(tool === 'selective');
         syncHud();
       },
       onHit: function (e, world) {
@@ -907,6 +937,12 @@
     });
     overlay.view = viewport.view;
     overlay.gridStep = 1;
+    selectiveView = window.SelectiveHalftoneView.create({
+      panel: $('panel-selective'), svg: $('overlay'),
+      layer: function () { return Doc.selected(doc); }, view: function () { return viewport.view; },
+      begin: function () { history.push(doc); },
+      change: function (live) { markDirty(live); if (!live) syncPanels(); }
+    });
     try {
       var kept = localStorage.getItem('ad.canvas');
       if (/^#[0-9a-f]{6}$/i.test(kept || '')) viewport.bg = kept;
