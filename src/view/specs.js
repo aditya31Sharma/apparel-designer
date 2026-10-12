@@ -316,7 +316,13 @@
             { kind: 'range', id: 'outroDarken', label: 'Darken', icon: 'weight',
               min: 0, max: 0.8, step: 0.01, fmt: pct,
               parse: function (v) { return parseFloat(v) / 100; } },
-            { kind: 'number', id: 'seed', label: 'Seed', icon: 'seed', min: 1, max: 999999, scrub: 1 }
+            { kind: 'number', id: 'seed', label: 'Seed', icon: 'seed', min: 1, max: 999999, scrub: 1 },
+            { kind: 'toggle', id: 'outroRemoveColour', label: 'Remove colour', icon: 'inkDrop' },
+            { kind: 'colour', id: 'outroColour', label: 'Hex colour', icon: 'fill' },
+            { kind: 'button', id: 'outroPicking', label: 'Pick from SVG',
+              altLabel: 'Click a colour (Esc to cancel)', icon: 'inkDrop',
+              action: function (api) { api.pickOutroColour(); } },
+            { kind: 'note', text: 'Removes every exact colour match, leaving transparency. Turn off to restore.' }
           ]
         },
         {

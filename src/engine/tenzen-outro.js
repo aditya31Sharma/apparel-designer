@@ -3,7 +3,8 @@
   'use strict';
 
   var BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  var DEFAULTS = { outroContrast: 3, outroGrain: 0.038, outroDarken: 0.4, seed: 82031 };
+  var DEFAULTS = { outroContrast: 3, outroGrain: 0.038, outroDarken: 0.4, seed: 82031,
+    outroRemoveColour: false, outroColour: '#000000' };
 
   function clamp(v) { return Math.max(0, Math.min(1, v)); }
 
@@ -18,6 +19,9 @@
 
   function process(px, params, matte, invert) {
     var p = Object.assign({}, DEFAULTS, params);
+    var hex = String(p.outroColour || '').trim().replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(hex)) hex = hex.replace(/./g, function (c) { return c + c; });
+    var remove = p.outroRemoveColour && /^[0-9a-f]{6}$/i.test(hex) ? parseInt(hex, 16) : -1;
     var state = p.seed | 0;
     function random() {
       state = (Math.imul(state, 1664525) + 1013904223) | 0;
@@ -52,7 +56,9 @@
           var my = Math.min(matte.h - 1, Math.floor(y * matte.h / h));
           alpha *= matte.mask[my * matte.w + mx] / 255;
         }
-        data[i] = data[i + 1] = data[i + 2] = alpha ? Math.round(tone * 255) : 0;
+        var gray = Math.round(tone * 255);
+        if (((gray << 16) | (gray << 8) | gray) === remove) alpha = 0;
+        data[i] = data[i + 1] = data[i + 2] = alpha ? gray : 0;
         data[i + 3] = alpha;
       }
     }

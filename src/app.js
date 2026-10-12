@@ -27,6 +27,7 @@
   var renders = {};                 // layerId -> drawable result
   var tool = 'warp';
   var textureImage = null, textureName = '';
+  var cancelColourPick = null;
 
   /* ---------- error surface ---------- */
 
@@ -78,6 +79,7 @@
    * because a drag and a commit are still worth telling apart, but nothing
    * about the result depends on it any more. */
   function markDirty(live) {
+    if (cancelColourPick) cancelColourPick();
     if (busy) { queued = true; return; }
     compute();
   }
@@ -502,6 +504,7 @@
         // with nothing loaded.
         if (id === 'canvas') return viewport ? viewport.bg : '#1e1e1e';
         if (id === 'bgProgress') return bgJob;
+        if (id === 'outroPicking') return !!cancelColourPick;
         var L = Doc.selected(doc);
         if (!L) return undefined;
         // `__on` is the effect's own switch, which lives on the stack entry
@@ -509,7 +512,9 @@
         if (id === '__on') return scope === 'layer' ? true : Doc.effect(L, scope).on;
         if (id === 'lockRatio') return !!L.lockRatio;
         if (id === 'hasMatte') return bgJob.busy ? 'busy' : !!L.matte;
-        return readPath(scope === 'layer' ? L : Doc.effect(L, scope).params, id);
+        var value = readPath(scope === 'layer' ? L : Doc.effect(L, scope).params, id);
+        if (value === undefined && (id === 'outroColour' || id === 'outroRemoveColour')) return window.TenzenOutro.defaults[id];
+        return value;
       },
       set: function (id, v, live) {
         if (id === 'canvas') { setCanvas(v); return; }
@@ -542,8 +547,31 @@
         markDirty(live);
       },
       commit: function () { syncPanels(); },
+      pickOutroColour: pickOutroColour,
       visible: function (cond) { return conditionHolds(scope, cond); }
     };
+  }
+
+  function pickOutroColour() {
+    if (cancelColourPick) { cancelColourPick(); return; }
+    var L = Doc.selected(doc), r = L && renders[L.id];
+    if (!r || busy || queued) return;
+    if (!Doc.effect(L, 'dither').on || r.plates) {
+      fail('Enable the Tenzen outro and turn off Halftone to pick its colours.'); return;
+    }
+    clearFail();
+    cancelColourPick = window.SVGColourPicker.start({
+      stage: $('stage'), canvas: $('canvas'), viewport: viewport, layer: L, render: r,
+      onStop: function () { cancelColourPick = null; syncPanels(); },
+      onPick: function (colour) {
+        history.push(doc);
+        var p = Doc.effect(L, 'dither').params;
+        p.outroColour = colour; p.outroRemoveColour = true;
+        L.paint.useSourceColours = true;
+        syncPanels(); markDirty(false);
+      }
+    });
+    syncPanels();
   }
 
   function readPath(obj, path) {
@@ -567,6 +595,8 @@
       }
     }
     if (scope === 'dither') {
+      if (id === 'outroColour') p.outroRemoveColour = true;
+      if (id === 'outroColour' || id === 'outroRemoveColour') L.paint.useSourceColours = true;
       if (id === 'preset' && DITHER_PRESETS[v]) {
         var next = JSON.parse(JSON.stringify(DITHER_PRESETS[v].params));
         /* How much of a picture becomes ink belongs to the picture; how much

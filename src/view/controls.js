@@ -78,9 +78,13 @@
         '<input type="color" class="swatch">' +
         '<input class="num hex" type="text" spellcheck="false"></div>');
       var sw = node.querySelector('.swatch'), hex = node.querySelector('.hex');
+      var changing = false;
       function show(v) { sw.value = v; if (document.activeElement !== hex) hex.value = v; }
-      sw.addEventListener('input', function () { hex.value = this.value; api.set(row.id, this.value, true); });
-      sw.addEventListener('change', function () { api.commit(row.id); });
+      sw.addEventListener('input', function () {
+        if (!changing) { api.begin(); changing = true; }
+        hex.value = this.value; api.set(row.id, this.value, true);
+      });
+      sw.addEventListener('change', function () { changing = false; api.commit(row.id); });
       hex.addEventListener('change', function () {
         var v = this.value.trim();
         if (!/^#?[0-9a-f]{6}$/i.test(v)) { show(api.get(row.id)); return; }

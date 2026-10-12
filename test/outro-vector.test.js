@@ -34,3 +34,44 @@ test('outro SVG export contains geometry with no embedded bitmap',()=>{
   const svg=S.build([{matrix:{a:1,b:0,c:0,d:1,e:0,f:0},bbox:box,shapes}]);
   assert.match(svg,/<path /);assert.doesNotMatch(svg,/<image|data:image/);
 });
+
+test('hex removal clears every matching tone, including partial alpha, without changing the source', () => {
+  const px = { w: 4, h: 1, data: new Uint8ClampedArray([
+    0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 80, 0, 0, 0, 90
+  ]) };
+  const original = px.data.slice();
+  const p = { outroGrain: 0, outroRemoveColour: true, outroColour: '#999999' };
+  const input = { items: [{ frame: true }], bbox: { x: 0, y: 0, width: 4, height: 1 }, pixels: px };
+  const result = T.run(input, p, {});
+  assert.deepEqual(Array.from(result.pixels.data), [
+    0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90
+  ]);
+  assert.deepEqual(px.data, original);
+  assert.equal(result.items.length, 2);
+  assert.equal(result.pixelsMatchGeometry, true);
+  const svg = S.build([{ matrix: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 },
+    bbox: input.bbox, shapes: result.items.map(item => ({ ...item, d: G.itemPathData(item) })) }]);
+  assert.doesNotMatch(svg, /#999999|rgba\(153,|<image|<filter|<mask|Gradient/);
+  assert.match(svg, /<path /);
+  assert.deepEqual(T.process(px, { ...p, outroRemoveColour: false }).data, T.process(px, { outroGrain: 0 }).data);
+});
+
+test('colour matching normalizes hex and never removes a near colour or invalid value', () => {
+  const px = { w: 1, h: 1, data: new Uint8ClampedArray([255, 255, 255, 255]) };
+  const p = { outroGrain: 0, outroDarken: 0, outroRemoveColour: true };
+  for (const hex of ['#ffffff', ' FFFFFF ', '#FFF']) {
+    assert.equal(T.process(px, { ...p, outroColour: hex }).data[3], 0);
+  }
+  for (const hex of ['#fffffe', '#ff0000', 'invalid', '#ffffffff', '']) {
+    assert.equal(T.process(px, { ...p, outroColour: hex }).data[3], 255);
+  }
+});
+
+test('removing the only colour exports empty transparent geometry rather than the original photo', () => {
+  const input = { items: [{ frame: true }], bbox: { x: 0, y: 0, width: 1, height: 1 },
+    pixels: { w: 1, h: 1, data: new Uint8ClampedArray([0, 0, 0, 255]) } };
+  const result = T.run(input, { outroRemoveColour: true, outroColour: '#000000' }, {});
+  assert.equal(result.items.length, 0);
+  assert.equal(result.photo, undefined);
+  assert.equal(result.pixels.data[3], 0);
+});
