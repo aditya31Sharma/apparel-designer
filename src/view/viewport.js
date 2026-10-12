@@ -283,6 +283,13 @@
 
     function drawPlates(c, L) {
       var op = L.blend || 'source-over';
+      if (L.plates.every(function (pl) { return pl.rule === 'evenodd'; })) {
+        var previous = c.globalCompositeOperation;
+        c.globalCompositeOperation = op;
+        L.plates.forEach(function (pl) { fillChunked(c, pl.paths, pl.colour, pl.rule); });
+        c.globalCompositeOperation = previous;
+        return;
+      }
       var n = 0;
       L.plates.forEach(function (pl) { n += pl.paths.length; });
 

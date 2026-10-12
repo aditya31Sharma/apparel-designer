@@ -298,6 +298,30 @@
         },
         colourExclusionSection(),
         {
+          title: 'Overall outline', id: 'massOutline', toggleId: 'mass.outline',
+          rows: [
+            { kind: 'range', id: 'mass.gap', label: 'Offset', icon: 'stroke', min: 0, max: 150, step: .5,
+              tip: 'Gap from the combined silhouette to the inner edge of the outline' },
+            { kind: 'range', id: 'mass.width', label: 'Outline width', icon: 'stroke', min: 0, max: 80, step: .5,
+              tip: 'Thickness of the overall outline, growing outwards from the offset' },
+            { kind: 'colour', id: 'mass.colour', label: 'Outline colour', icon: 'stroke',
+              tip: 'Colour of the overall outline and switched base' },
+            { kind: 'toggle', id: 'mass.switchBase', label: 'Switch base', icon: 'invert',
+              tip: 'Fill the outlined area and cut the dithered artwork out of it' }
+          ]
+        },
+        {
+          title: 'Eraser', id: 'massEraser',
+          rows: [
+            { kind: 'button', id: 'erasing', label: 'Erase areas', altLabel: 'Finish erasing', icon: 'cutBg',
+              tip: 'Brush over unwanted areas. Escape finishes. Undo restores the last stroke', action: function (api) { api.erase(); } },
+            { kind: 'range', id: 'mass.brushSize', label: 'Brush size', icon: 'stroke', min: 1, max: 200, step: 1,
+              tip: 'Brush diameter in artwork units' },
+            { kind: 'button', label: 'Restore erased areas', icon: 'reset',
+              tip: 'Restore all erased areas on this layer', action: function (api) { api.restoreErased(); } }
+          ]
+        },
+        {
           title: 'Style',
           rows: [
             { kind: 'tiles', id: 'preset', items: function () { return ditherTiles(); } },

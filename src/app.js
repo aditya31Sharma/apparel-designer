@@ -27,7 +27,8 @@
   var renders = {};                 // layerId -> drawable result
   var tool = 'warp';
   var textureImage = null, textureName = '';
-  var cancelColourPick = null;
+  var cancelColourPick = null, cancelEraser = null;
+  var massCache = new WeakMap();
 
   /* ---------- error surface ---------- */
 
@@ -79,6 +80,7 @@
    * because a drag and a commit are still worth telling apart, but nothing
    * about the result depends on it any more. */
   function markDirty(live) {
+    if (cancelEraser) cancelEraser();
     if (cancelColourPick) cancelColourPick();
     if (busy) { queued = true; return; }
     compute();
@@ -382,8 +384,8 @@
         shapes: artwork.shapes,
         plates: artwork.plates,
         blend: plateBlend(r),
-        clips: r.clips,
-        bbox: r.bbox
+        clips: artwork.clips,
+        bbox: artwork.bbox || r.bbox
       });
     });
     viewport.setScene(scene);
@@ -495,7 +497,9 @@
 
   function paintedArtwork(L, r) {
     var pd = paintFor(L);
-    return window.ColourExclusion.apply({
+    var key = JSON.stringify([L.paint, exclusionFor(L)]), hit = massCache.get(r);
+    if (hit && hit.key === key) return hit.render;
+    var result = window.ColourExclusion.apply({
       clips: r.clips,
       shapes: r.plates ? [] : r.shapes.map(function (sh) {
         return Object.assign({}, sh, {
@@ -506,6 +510,10 @@
       }),
       plates: inkPlates(L, r)
     }, exclusionFor(L));
+    result = window.ArtworkMass.apply(result, r.bbox, L.paint.mass);
+    result = window.ColourExclusion.apply(result, exclusionFor(L));
+    massCache.set(r, { key: key, render: result });
+    return result;
   }
 
   function setExclusion(L, id, value) {
@@ -532,8 +540,10 @@
         if (id === 'canvas') return viewport ? viewport.bg : '#1e1e1e';
         if (id === 'bgProgress') return bgJob;
         if (id === 'colourPicking') return !!cancelColourPick;
+        if (id === 'erasing') return !!cancelEraser;
         var L = Doc.selected(doc);
         if (!L) return undefined;
+        if (id.indexOf('mass.') === 0) return massSettings(L)[id.slice(5)];
         if (id === 'excludeColour') return exclusionFor(L).on;
         if (id === 'excludedColour') return exclusionFor(L).colour;
         // `__on` is the effect's own switch, which lives on the stack entry
@@ -548,6 +558,13 @@
         var L = Doc.selected(doc);
         if (!L) return;
         if (!live) history.push(doc);
+        if (id.indexOf('mass.') === 0) {
+          var r = renders[L.id];
+          if (!r || untouchedImage(L, r)) { fail('Apply Dither or Halftone before editing the artwork.'); return; }
+          L.paint.mass = Object.assign({}, massSettings(L));
+          L.paint.mass[id.slice(5)] = v;
+          clearFail(); paint(); return;
+        }
         if (id === 'excludeColour' || id === 'excludedColour') { setExclusion(L, id, v); return; }
         if (id === '__on') {
           Doc.effect(L, scope).on = v;
@@ -576,11 +593,41 @@
       },
       commit: function () { syncPanels(); },
       pickColour: pickColour,
+      erase: erase,
+      restoreErased: function () {
+        var L = Doc.selected(doc);
+        if (!L || !L.paint.mass || !L.paint.mass.erasures.length) return;
+        history.push(doc); L.paint.mass.erasures = []; paint();
+      },
       visible: function (cond) { return conditionHolds(scope, cond); }
     };
   }
 
+  function massSettings(L) { return Object.assign({}, window.ArtworkMass.defaults, L.paint.mass); }
+
+  function erase() {
+    if (cancelEraser) { cancelEraser(); return; }
+    if (cancelColourPick) cancelColourPick();
+    var L = Doc.selected(doc), r = L && renders[L.id];
+    if (!r || busy || queued) return;
+    if (untouchedImage(L, r)) { fail('Apply Dither or Halftone before editing the artwork.'); return; }
+    clearFail();
+    cancelEraser = window.ArtworkEraser.start({
+      stage: $('stage'), canvas: $('canvas'), viewport: viewport, layer: L,
+      size: function () { return massSettings(L).brushSize; },
+      ready: function () { return !busy && !queued && L === Doc.selected(doc); },
+      commit: function (stroke) {
+        history.push(doc);
+        L.paint.mass = Object.assign({}, massSettings(L), { erasures: massSettings(L).erasures.concat([stroke]) });
+        paint();
+      },
+      onStop: function () { cancelEraser = null; syncPanels(); }
+    });
+    syncPanels();
+  }
+
   function pickColour() {
+    if (cancelEraser) cancelEraser();
     if (cancelColourPick) { cancelColourPick(); return; }
     var L = Doc.selected(doc), r = L && renders[L.id];
     if (!r || busy || queued) return;
@@ -734,6 +781,7 @@
   }
 
   function loadItems(items, name, bitmap, pixels) {
+    if (cancelEraser) cancelEraser();
     var bbox = W.bounds(items.map(function (i) { return i.d; }));
     if (!bbox.width || !bbox.height) { fail('That artwork has no area'); return; }
 
@@ -926,17 +974,17 @@
       return {
         name: L.name,
         matrix: Doc.layerMatrix(L),
-        bbox: r.bbox,
+        bbox: artwork.bbox || r.bbox,
         opacity: L.paint.opacity,
         shapes: artwork.shapes.map(function (sh) {
           return {
             d: window.Geom.itemPathData(sh),
-            fill: sh.fill, stroke: sh.stroke, strokeWidth: sh.strokeWidth
+            fill: sh.fill, stroke: sh.stroke, strokeWidth: sh.strokeWidth, rule: sh.rule
           };
         }),
         plates: artwork.plates,
         blend: plateBlend(r),
-        clips: r.clips,
+        clips: artwork.clips,
         pattern: r.pattern, fuzziness: r.fuzziness, seed: r.seed
       };
     }).filter(Boolean);
@@ -1037,6 +1085,7 @@
       var btn = $('tool-' + def.id);
       if (!btn) return;
       btn.onclick = function () {
+        if (cancelEraser) cancelEraser();
         tool = def.id;
         syncChrome();
         paint();
@@ -1046,7 +1095,7 @@
     $('fit').onclick = function () {
       var L = Doc.selected(doc);
       var r = L && renders[L.id];
-      viewport.fit(r ? transformedBounds(L, r.bbox) : null);
+      viewport.fit(r ? transformedBounds(L, paintedArtwork(L, r).bbox || r.bbox) : null);
     };
     $('zoom100').onclick = function () { viewport.zoomTo(1); };
     // Double tapping the canvas frames the artwork, which is what a photo

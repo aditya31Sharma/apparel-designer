@@ -50,6 +50,7 @@
 
   /* One plate to path data, using the same outline routine the viewport draws. */
   function platePath(plate, pattern, fuzziness, seed, precision) {
+    if (plate.d !== undefined) return plate.d;
     var sink = H().PathSink(precision === undefined ? 2 : precision);
     var d = plate.dots;
     for (var o = 0; o < d.length; o += H().STRIDE) {

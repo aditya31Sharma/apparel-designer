@@ -2,15 +2,20 @@
 (function (root) {
   'use strict';
 
+  function contains(shape, point, context) {
+    if (shape.rule === 'evenodd') return shape.paths.reduce(function (inside, path) {
+      return inside !== context.isPointInPath(path, point.x, point.y, 'evenodd');
+    }, false);
+    return shape.paths.some(function (path) { return context.isPointInPath(path, point.x, point.y); });
+  }
+
   function pick(render, point, context) {
     if ((render.clips || []).some(function (clip) {
       return !context.isPointInPath(clip.path, point.x, point.y);
     })) return null;
     var plates = render.plates || [];
     for (var p = plates.length - 1; p >= 0; p--) {
-      if (plates[p].paths.some(function (path) {
-        return context.isPointInPath(path, point.x, point.y);
-      })) return root.ColourExclusion.hex(plates[p].colour);
+      if (contains(plates[p], point, context)) return root.ColourExclusion.hex(plates[p].colour);
     }
     var shapes = render.shapes || [];
     for (var i = shapes.length - 1; i >= 0; i--) {
@@ -23,9 +28,7 @@
         })) return colour;
       }
       colour = root.ColourExclusion.hex(shape.fill);
-      if (colour && shape.paths.some(function (path) {
-        return context.isPointInPath(path, point.x, point.y, shape.rule || 'nonzero');
-      })) return colour;
+      if (colour && contains(shape, point, context)) return colour;
     }
     return null;
   }
