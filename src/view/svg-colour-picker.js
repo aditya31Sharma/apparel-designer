@@ -2,21 +2,27 @@
 (function (root) {
   'use strict';
 
-  function hex(fill) {
-    if (/^#[0-9a-f]{6}$/i.test(fill || '')) return fill.toLowerCase();
-    var rgb = /^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\s*\)$/.exec(fill || '');
-    return rgb ? '#' + rgb.slice(1, 4).map(function (v) {
-      return Number(v).toString(16).padStart(2, '0');
-    }).join('') : null;
-  }
-
   function pick(render, point, context) {
     if ((render.clips || []).some(function (clip) {
       return !context.isPointInPath(clip.path, point.x, point.y);
     })) return null;
+    var plates = render.plates || [];
+    for (var p = plates.length - 1; p >= 0; p--) {
+      if (plates[p].paths.some(function (path) {
+        return context.isPointInPath(path, point.x, point.y);
+      })) return root.ColourExclusion.hex(plates[p].colour);
+    }
     var shapes = render.shapes || [];
     for (var i = shapes.length - 1; i >= 0; i--) {
-      var shape = shapes[i], colour = hex(shape.fill);
+      var shape = shapes[i], colour = root.ColourExclusion.hex(shape.stroke);
+      if (colour && shape.strokeWidth > 0) {
+        context.lineWidth = shape.strokeWidth;
+        context.lineJoin = 'round'; context.lineCap = 'round';
+        if (shape.paths.some(function (path) {
+          return context.isPointInStroke(path, point.x, point.y);
+        })) return colour;
+      }
+      colour = root.ColourExclusion.hex(shape.fill);
       if (colour && shape.paths.some(function (path) {
         return context.isPointInPath(path, point.x, point.y, shape.rule || 'nonzero');
       })) return colour;

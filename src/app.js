@@ -367,7 +367,6 @@
     doc.layers.forEach(function (L) {
       var r = renders[L.id];
       if (!r) return;
-      var paintDef = paintFor(L);
       var raw = untouchedImage(L, r);
       if (raw) {
         scene.layers.push({
@@ -376,18 +375,12 @@
         });
         return;
       }
+      var artwork = paintedArtwork(L, r);
       scene.layers.push({
         matrix: Doc.layerMatrix(L),
         opacity: L.paint.opacity,
-        shapes: r.plates ? null : r.shapes.map(function (sh) {
-          return {
-            paths: sh.paths,
-            fill: paintDef.useSource ? sh.fill : paintDef.fill,
-            stroke: paintDef.useSource ? sh.stroke : paintDef.stroke,
-            strokeWidth: paintDef.useSource ? sh.strokeWidth : paintDef.strokeWidth
-          };
-        }),
-        plates: inkPlates(L, r),
+        shapes: artwork.shapes,
+        plates: artwork.plates,
         blend: plateBlend(r),
         clips: r.clips,
         bbox: r.bbox
@@ -492,6 +485,40 @@
     };
   }
 
+  function exclusionFor(L) {
+    var legacy = Doc.effect(L, 'dither').params;
+    return {
+      on: L.paint.excludeColour === undefined ? !!(legacy.preset === 'tenzenOutro' && legacy.outroRemoveColour) : L.paint.excludeColour,
+      colour: L.paint.excludedColour || legacy.outroColour || '#000000'
+    };
+  }
+
+  function paintedArtwork(L, r) {
+    var pd = paintFor(L);
+    return window.ColourExclusion.apply({
+      clips: r.clips,
+      shapes: r.plates ? [] : r.shapes.map(function (sh) {
+        return Object.assign({}, sh, {
+          fill: pd.useSource ? sh.fill : pd.fill,
+          stroke: pd.useSource ? sh.stroke : pd.stroke,
+          strokeWidth: pd.useSource ? sh.strokeWidth : pd.strokeWidth
+        });
+      }),
+      plates: inkPlates(L, r)
+    }, exclusionFor(L));
+  }
+
+  function setExclusion(L, id, value) {
+    if (cancelColourPick) cancelColourPick();
+    var settings = exclusionFor(L), legacy = Doc.effect(L, 'dither').params;
+    L.paint.excludeColour = id === 'excludeColour' ? value : true;
+    L.paint.excludedColour = id === 'excludedColour' ? value : settings.colour;
+    if (legacy.outroRemoveColour) {
+      legacy.outroRemoveColour = false;
+      markDirty(false);
+    } else paint();
+  }
+
   /* ================= panels ================= */
 
   /* One accessor object per panel. `get` and `set` address either the layer's
@@ -504,23 +531,24 @@
         // with nothing loaded.
         if (id === 'canvas') return viewport ? viewport.bg : '#1e1e1e';
         if (id === 'bgProgress') return bgJob;
-        if (id === 'outroPicking') return !!cancelColourPick;
+        if (id === 'colourPicking') return !!cancelColourPick;
         var L = Doc.selected(doc);
         if (!L) return undefined;
+        if (id === 'excludeColour') return exclusionFor(L).on;
+        if (id === 'excludedColour') return exclusionFor(L).colour;
         // `__on` is the effect's own switch, which lives on the stack entry
         // rather than among its parameters.
         if (id === '__on') return scope === 'layer' ? true : Doc.effect(L, scope).on;
         if (id === 'lockRatio') return !!L.lockRatio;
         if (id === 'hasMatte') return bgJob.busy ? 'busy' : !!L.matte;
-        var value = readPath(scope === 'layer' ? L : Doc.effect(L, scope).params, id);
-        if (value === undefined && (id === 'outroColour' || id === 'outroRemoveColour')) return window.TenzenOutro.defaults[id];
-        return value;
+        return readPath(scope === 'layer' ? L : Doc.effect(L, scope).params, id);
       },
       set: function (id, v, live) {
         if (id === 'canvas') { setCanvas(v); return; }
         var L = Doc.selected(doc);
         if (!L) return;
         if (!live) history.push(doc);
+        if (id === 'excludeColour' || id === 'excludedColour') { setExclusion(L, id, v); return; }
         if (id === '__on') {
           Doc.effect(L, scope).on = v;
           overlay.lockRatio = !!L.lockRatio;
@@ -547,28 +575,26 @@
         markDirty(live);
       },
       commit: function () { syncPanels(); },
-      pickOutroColour: pickOutroColour,
+      pickColour: pickColour,
       visible: function (cond) { return conditionHolds(scope, cond); }
     };
   }
 
-  function pickOutroColour() {
+  function pickColour() {
     if (cancelColourPick) { cancelColourPick(); return; }
     var L = Doc.selected(doc), r = L && renders[L.id];
     if (!r || busy || queued) return;
-    if (!Doc.effect(L, 'dither').on || r.plates) {
-      fail('Enable the Tenzen outro and turn off Halftone to pick its colours.'); return;
+    if (untouchedImage(L, r)) {
+      fail('Apply Dither or Halftone before picking a colour.'); return;
     }
     clearFail();
     cancelColourPick = window.SVGColourPicker.start({
-      stage: $('stage'), canvas: $('canvas'), viewport: viewport, layer: L, render: r,
+      stage: $('stage'), canvas: $('canvas'), viewport: viewport, layer: L, render: paintedArtwork(L, r),
       onStop: function () { cancelColourPick = null; syncPanels(); },
       onPick: function (colour) {
         history.push(doc);
-        var p = Doc.effect(L, 'dither').params;
-        p.outroColour = colour; p.outroRemoveColour = true;
-        L.paint.useSourceColours = true;
-        syncPanels(); markDirty(false);
+        setExclusion(L, 'excludedColour', colour);
+        syncPanels();
       }
     });
     syncPanels();
@@ -595,8 +621,6 @@
       }
     }
     if (scope === 'dither') {
-      if (id === 'outroColour') p.outroRemoveColour = true;
-      if (id === 'outroColour' || id === 'outroRemoveColour') L.paint.useSourceColours = true;
       if (id === 'preset' && DITHER_PRESETS[v]) {
         var next = JSON.parse(JSON.stringify(DITHER_PRESETS[v].params));
         /* How much of a picture becomes ink belongs to the picture; how much
@@ -891,7 +915,6 @@
     return doc.layers.map(function (L) {
       var r = renders[L.id];
       if (!r) return null;
-      var pd = paintFor(L);
       if (untouchedImage(L, r)) {
         return {
           name: L.name, matrix: Doc.layerMatrix(L), bbox: r.bbox,
@@ -899,20 +922,19 @@
           image: imageUriFor(L), clips: r.clips
         };
       }
+      var artwork = paintedArtwork(L, r);
       return {
         name: L.name,
         matrix: Doc.layerMatrix(L),
         bbox: r.bbox,
         opacity: L.paint.opacity,
-        shapes: r.plates ? [] : r.shapes.map(function (sh) {
+        shapes: artwork.shapes.map(function (sh) {
           return {
             d: window.Geom.itemPathData(sh),
-            fill: pd.useSource ? sh.fill : pd.fill,
-            stroke: pd.useSource ? sh.stroke : pd.stroke,
-            strokeWidth: pd.useSource ? sh.strokeWidth : pd.strokeWidth
+            fill: sh.fill, stroke: sh.stroke, strokeWidth: sh.strokeWidth
           };
         }),
-        plates: inkPlates(L, r),
+        plates: artwork.plates,
         blend: plateBlend(r),
         clips: r.clips,
         pattern: r.pattern, fuzziness: r.fuzziness, seed: r.seed
