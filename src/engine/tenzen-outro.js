@@ -1,4 +1,4 @@
-/* The outro's printed monochrome treatment, shared by preview and export. */
+/* The outro's printed monochrome treatment, shared by preview and vector export. */
 (function (root) {
   'use strict';
 
@@ -59,6 +59,44 @@
     return { data: data, w: w, h: h };
   }
 
+  // Merge equal-tone pixel runs into rectangles, then group their contours by ink.
+  // Keeping exact tone and alpha preserves the treatment without embedding a photo.
+  function vectorize(px, box) {
+    var groups = new Map(), active = new Map(), w = px.w, h = px.h, data = px.data;
+    for (var y = 0; y < h; y++) {
+      var next = new Map();
+      for (var x = 0; x < w;) {
+        var start = x, i = (y * w + x) * 4, tone = data[i], alpha = data[i + 3];
+        var code = (tone << 8) | alpha;
+        do { x++; i += 4; } while (x < w && data[i] === tone && data[i + 3] === alpha);
+        if (!alpha) continue;
+        var key = start + ':' + x + ':' + code, rect = active.get(key);
+        if (rect) rect[3] = y + 1;
+        else {
+          rect = [start, y, x, y + 1];
+          if (!groups.has(code)) groups.set(code, []);
+          groups.get(code).push(rect);
+        }
+        next.set(key, rect);
+      }
+      active = next;
+    }
+    var sx = box.width / w, sy = box.height / h, items = [];
+    groups.forEach(function (rects, code) {
+      var points = new Float32Array(rects.length * 8), offsets = new Uint32Array(rects.length + 1);
+      rects.forEach(function (rect, n) {
+        var x0 = box.x + rect[0] * sx, x1 = box.x + rect[2] * sx;
+        var y0 = box.y + rect[1] * sy, y1 = box.y + rect[3] * sy;
+        points.set([x0, y0, x1, y0, x1, y1, x0, y1], n * 8); offsets[n] = n * 4;
+      });
+      offsets[rects.length] = rects.length * 4;
+      var tone = code >> 8, alpha = code & 255;
+      items.push({ points: points, offsets: offsets,
+        fill: 'rgba(' + tone + ',' + tone + ',' + tone + ',' + alpha / 255 + ')', stroke: 'none', strokeWidth: 0 });
+    });
+    return items;
+  }
+
   function run(input, params, ctx) {
     var px = input.pixels, matte = input.matte;
     var frame = !input.items.length || input.items.every(function (it) { return it.frame; });
@@ -70,8 +108,9 @@
     }
     if (!px) return null;
     var photo = process(px, params, matte, input.invert);
-    return { items: [], bbox: input.bbox, pixels: photo, photo: photo,
-      stats: { width: photo.w, height: photo.h } };
+    var items = vectorize(photo, input.bbox);
+    return { items: items, bbox: input.bbox, pixels: photo, pixelsMatchGeometry: true,
+      stats: { width: photo.w, height: photo.h, shapes: items.reduce(function (n, item) { return n + item.offsets.length - 1; }, 0) } };
   }
 
   function thumbnail() {
@@ -84,12 +123,11 @@
       }
     }
     var px = process({ data: data, w: w, h: h });
-    var c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    c.getContext('2d').putImageData(new ImageData(px.data, w, h), 0, 0);
-    return '<svg viewBox="0 0 120 38"><image width="120" height="38" href="' +
-      c.toDataURL('image/png') + '"/></svg>';
+    var items = vectorize(px, { x: 0, y: 0, width: w, height: h });
+    return '<svg viewBox="0 0 120 38">' + items.map(function (item) {
+      return '<path d="' + root.Geom.itemPathData(item) + '" fill="' + item.fill + '"/>';
+    }).join('') + '</svg>';
   }
 
-  root.TenzenOutro = { defaults: DEFAULTS, process: process, run: run, thumbnail: thumbnail };
+  root.TenzenOutro = { defaults: DEFAULTS, process: process, vectorize: vectorize, run: run, thumbnail: thumbnail };
 })(typeof module !== 'undefined' ? module.exports : self);

@@ -111,6 +111,7 @@
 
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
+        if (el.closest('defs, clipPath, mask, pattern, symbol')) continue;
         var cs = getComputedStyle(el);
         if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue;
         var d = toPathData(el);

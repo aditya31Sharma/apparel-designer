@@ -83,11 +83,12 @@ var layer = { effects: [{ type: 'dither', on: true, params: { preset: 'tenzenOut
 var ctx = { maskFromPaths: function () { throw new Error('photo must not be traced'); },
   rasterize: sandbox.Raster.rasterize };
 E.runStack(layer, input, ctx).then(function (run) {
-  check('Dither emits the treated image and preserves the frame', function () {
+  check('Dither emits vector contours and preserves processed pixels for later effects', function () {
     assert.strictEqual(run.result.bbox, input.bbox);
-    assert.strictEqual(run.result.photo, run.result.pixels);
-    assert.strictEqual(run.result.items.length, 0);
-    assert.deepStrictEqual(Array.from(run.result.photo.data), Array.from(T.process(input.pixels).data));
+    assert.strictEqual(run.result.photo, undefined);
+    assert.ok(run.result.items.length > 0);
+    assert.strictEqual(run.result.pixelsMatchGeometry, true);
+    assert.deepStrictEqual(Array.from(run.result.pixels.data), Array.from(T.process(input.pixels).data));
   });
   layer.effects.push({ type: 'halftone', on: true, params: E.defaultsFor('halftone') });
   return E.runStack(layer, input, ctx);

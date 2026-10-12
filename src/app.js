@@ -579,7 +579,7 @@
           next.imageCut = Math.max(0.1, Math.min(0.85, auto + (next.imageCut - 0.4)));
         }
         Object.assign(p, next);
-        if (v === 'tenzenOutro') Doc.effect(L, 'dither').on = true;
+        if (v === 'tenzenOutro') { Doc.effect(L, 'dither').on = true; L.paint.useSourceColours = true; }
       }
       // Choosing Import asks for the file rather than silently doing nothing.
       if (id === 'texture' && v === 'image' && !textureImage) $('textureFile').click();
@@ -1140,6 +1140,13 @@
 
     window.addEventListener('paste', function (e) {
       if (window.Mockup && window.Mockup.active()) return;
+      if (window.SVGClipboard.editing(e.target)) return;
+      var vector = window.SVGClipboard.read(e.clipboardData);
+      if (vector) {
+        e.preventDefault();
+        vector.then(function (text) { loadMarkup(window.SVGClipboard.normalize(text), 'pasted.svg'); }).catch(function (err) { fail(err.message); });
+        return;
+      }
       var items = e.clipboardData && e.clipboardData.items;
       if (items) {
         for (var i = 0; i < items.length; i++) {
@@ -1149,8 +1156,6 @@
           }
         }
       }
-      var text = e.clipboardData && e.clipboardData.getData('text/plain');
-      if (text && text.indexOf('<svg') >= 0) { e.preventDefault(); loadMarkup(text, 'pasted.svg'); }
     });
   }
 

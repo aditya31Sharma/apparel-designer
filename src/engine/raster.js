@@ -55,7 +55,7 @@
     var ground = inv ? 0 : 255;
 
     var data;
-    if (input.pixels && (stillTheFrame || !input.items.length)) {
+    if (input.pixels && (stillTheFrame || !input.items.length || input.pixelsMatchGeometry)) {
       /* Straight from the numbers. Routing a photo through a canvas only to
        * read it back again cost a hundred and ninety milliseconds a frame:
        * drawing puts the surface on the GPU and getImageData then has to stall
